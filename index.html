@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cumplimiento Normativo - Laboratorio</title>
+    <title>Cumplimiento Normativo - Laboratorio Mexicano</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
         body {
@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 1000px;
             margin: 0 auto;
         }
 
@@ -74,24 +74,34 @@
         }
 
         .progress-circle {
-            width: 80px;
-            height: 80px;
+            width: 100px;
+            height: 100px;
             background: rgba(255,255,255,0.2);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 1rem;
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             font-weight: bold;
+            border: 4px solid rgba(255,255,255,0.3);
+        }
+
+        .controls {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1rem;
         }
 
         .search-box {
-            background: white;
-            border-radius: 1rem;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
         }
 
         .search-input {
@@ -102,69 +112,187 @@
             font-size: 1rem;
         }
 
+        .filter-box {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid #e5e7eb;
+        }
+
+        .toggle-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .toggle {
+            position: relative;
+            width: 3.5rem;
+            height: 1.8rem;
+            background: #d1d5db;
+            border-radius: 9999px;
+            cursor: pointer;
+        }
+
+        .toggle.active {
+            background: #1e40af;
+        }
+
+        .toggle-thumb {
+            position: absolute;
+            top: 0.2rem;
+            left: 0.2rem;
+            width: 1.4rem;
+            height: 1.4rem;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .toggle.active .toggle-thumb {
+            transform: translateX(1.7rem);
+        }
+
         .section {
             background: white;
             border-radius: 1rem;
             padding: 1.5rem;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .section-title {
             color: #1e40af;
-            margin-bottom: 1rem;
-            font-size: 1.25rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.3rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .items-grid {
+            display: grid;
+            gap: 1rem;
         }
 
         .item {
             border: 1px solid #e5e7eb;
             border-radius: 0.75rem;
-            padding: 1rem;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .item.completed {
+            background: #f0f9ff;
+            opacity: 0.8;
+        }
+
+        .item.in-progress {
+            background: #fffbeb;
+        }
+
+        .item-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
             margin-bottom: 1rem;
+        }
+
+        .status-indicator {
+            width: 1.2rem;
+            height: 1.2rem;
+            border-radius: 50%;
+            border: 2px solid #d1d5db;
+            flex-shrink: 0;
+            margin-top: 0.2rem;
+        }
+
+        .status-indicator.completed {
+            background: #10b981;
+            border-color: #10b981;
+        }
+
+        .status-indicator.in-progress {
+            background: #f59e0b;
+            border-color: #f59e0b;
+        }
+
+        .item-content {
+            flex: 1;
         }
 
         .item-title {
             font-weight: 600;
             margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+            color: #1f2937;
         }
 
         .item-ref {
             color: #6b7280;
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             margin-bottom: 1rem;
+            font-style: italic;
+        }
+
+        .item-description {
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            border-left: 4px solid #1e40af;
         }
 
         .status-buttons {
             display: flex;
-            gap: 0.5rem;
+            gap: 0.75rem;
             margin-bottom: 1rem;
             flex-wrap: wrap;
         }
 
         .status-btn {
-            padding: 0.75rem 1rem;
-            border: 1px solid #d1d5db;
+            padding: 0.75rem 1.5rem;
+            border: 2px solid #d1d5db;
             border-radius: 0.5rem;
             background: white;
             cursor: pointer;
-            font-size: 0.875rem;
-            min-height: 44px;
-            flex: 1;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            min-width: 160px;
         }
 
-        .status-btn.total.active {
-            background: #1e40af;
+        .status-btn.completed {
+            background: #10b981;
             color: white;
-            border-color: #1e40af;
+            border-color: #10b981;
         }
 
-        .status-btn.proceso.active {
+        .status-btn.in-progress {
             background: #f59e0b;
             color: white;
             border-color: #f59e0b;
+        }
+
+        .status-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .notes-section {
+            margin-top: 1rem;
         }
 
         .notes-btn {
@@ -174,9 +302,14 @@
             border-radius: 0.5rem;
             padding: 0.75rem 1rem;
             cursor: pointer;
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             width: 100%;
             margin-bottom: 0.5rem;
+            transition: background 0.2s;
+        }
+
+        .notes-btn:hover {
+            background: #c7d2fe;
         }
 
         .notes-textarea {
@@ -184,22 +317,52 @@
             border: 1px solid #d1d5db;
             border-radius: 0.5rem;
             padding: 1rem;
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             min-height: 100px;
             resize: vertical;
-            display: none;
+            font-family: inherit;
         }
 
-        .item.completed {
-            opacity: 0.7;
-            background: #f0f9ff;
+        .export-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .export-btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            min-width: 200px;
+        }
+
+        .export-btn.primary {
+            background: #1e40af;
+            color: white;
+        }
+
+        .export-btn.secondary {
+            background: white;
+            color: #1e40af;
+            border: 2px solid #1e40af;
+        }
+
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
         }
 
         .legend {
             display: flex;
-            gap: 1rem;
+            gap: 2rem;
             justify-content: center;
-            margin-bottom: 1rem;
+            margin: 1rem 0 2rem 0;
             flex-wrap: wrap;
         }
 
@@ -207,27 +370,39 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             color: #6b7280;
         }
 
         .legend-color {
-            width: 12px;
-            height: 12px;
+            width: 1rem;
+            height: 1rem;
             border-radius: 50%;
+            border: 2px solid;
         }
 
-        .legend-color.total {
-            background: #1e40af;
+        .legend-color.completed {
+            background: #10b981;
+            border-color: #10b981;
         }
 
-        .legend-color.proceso {
+        .legend-color.in-progress {
             background: #f59e0b;
+            border-color: #f59e0b;
+        }
+
+        .legend-color.pending {
+            background: white;
+            border-color: #d1d5db;
         }
 
         @media (max-width: 768px) {
-            body {
+            .container {
                 padding: 0.5rem;
+            }
+            
+            .controls {
+                grid-template-columns: 1fr;
             }
             
             .status-buttons {
@@ -236,6 +411,22 @@
             
             .status-btn {
                 width: 100%;
+                min-width: auto;
+            }
+            
+            .export-buttons {
+                flex-direction: column;
+            }
+            
+            .export-btn {
+                width: 100%;
+                min-width: auto;
+            }
+            
+            .legend {
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: center;
             }
         }
     </style>
@@ -245,108 +436,355 @@
         <header>
             <div class="logo">
                 <div class="logo-icon">L</div>
-                <h1>Cumplimiento Laboratorio</h1>
+                <h1>Cumplimiento Normativo Laboratorio</h1>
             </div>
-            <p class="subtitle">Checklist normativo para laboratorios mexicanos</p>
+            <p class="subtitle">Checklist completo para laboratorios mexicanos - Basado en NOM-007-SSA3-2011</p>
         </header>
 
         <div class="progress-card">
             <div class="progress-circle" id="progressValue">0%</div>
-            <div id="progressText">0 / 0 ítems completados</div>
+            <div id="progressText">0 de 0 ítems completados</div>
         </div>
 
         <div class="legend">
             <div class="legend-item">
-                <div class="legend-color total"></div>
+                <div class="legend-color completed"></div>
                 <span>Cumplimiento total</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color proceso"></div>
+                <div class="legend-color in-progress"></div>
                 <span>En proceso</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color pending"></div>
+                <span>Pendiente</span>
             </div>
         </div>
 
-        <div class="search-box">
-            <input type="text" class="search-input" id="searchInput" placeholder="🔍 Buscar por ítem o sección...">
+        <div class="controls">
+            <div class="search-box">
+                <label for="searchInput" style="font-weight: 500; margin-bottom: 0.5rem;">🔍 Buscar en todos los ítems:</label>
+                <input type="text" class="search-input" id="searchInput" placeholder="Escribe para buscar por título, referencia o descripción...">
+            </div>
+            <div class="filter-box">
+                <label style="font-weight: 500; margin-bottom: 0.5rem;">Filtros:</label>
+                <div class="toggle-container">
+                    <div class="toggle-label">Mostrar solo pendientes</div>
+                    <div class="toggle" id="pendingToggle">
+                        <div class="toggle-thumb"></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div id="sectionsContainer">
-            <!-- Las secciones se cargarán aquí -->
+            <!-- Las secciones se cargarán aquí con JavaScript -->
+        </div>
+
+        <div class="export-buttons">
+            <button class="export-btn primary" onclick="exportarDatos()">📥 Exportar Datos (JSON)</button>
+            <button class="export-btn secondary" onclick="limpiarDatos()">🔄 Restablecer Todo</button>
+            <button class="export-btn secondary" onclick="window.print()">🖨️ Exportar PDF</button>
         </div>
     </div>
 
     <script>
-        // Datos de la aplicación
+        // DATOS COMPLETOS DEL LABORATORIO
         const sections = [
             {
+                id: "documentos",
                 title: "📄 Documentos y Manuales",
                 items: [
-                    { id: "manual-organizacion", label: "Manual de Organización", ref: "Ref. 5.5.1" },
-                    { id: "manual-proc-admin", label: "Manual de Procedimientos Administrativos", ref: "Ref. 5.5.2" },
-                    { id: "pnos-metodos", label: "PNO por cada método analítico", ref: "Ref. 5.5.3" },
-                    { id: "manual-muestras", label: "Manual de toma y transporte de muestras", ref: "Ref. 5.5.5" }
+                    {
+                        id: "manual-organizacion",
+                        label: "Manual de Organización",
+                        ref: "Ref. 5.5.1",
+                        description: "Define la estructura y filosofía del laboratorio. Incluye: organigrama, descripción de puestos, perfiles y requisitos, firmas de responsabilidad."
+                    },
+                    {
+                        id: "manual-proc-admin",
+                        label: "Manual de Procedimientos Administrativos", 
+                        ref: "Ref. 5.5.2",
+                        description: "Procedimientos no analíticos: recepción de pacientes, toma de muestras, entrega de resultados, compras, inventarios."
+                    },
+                    {
+                        id: "pnos-metodos",
+                        label: "PNO por cada método analítico",
+                        ref: "Ref. 5.5.3", 
+                        description: "Procedimientos normalizados de operación para cada prueba. Incluye: fundamento, procedimiento paso a paso, valores de referencia, bibliografía."
+                    },
+                    {
+                        id: "manual-muestras",
+                        label: "Manual de toma y transporte de muestras",
+                        ref: "Ref. 5.5.5",
+                        description: "Guía completa para toma, identificación, conservación y transporte de muestras. Criterios de aceptación/rechazo."
+                    },
+                    {
+                        id: "manual-equipo", 
+                        label: "Manual de manejo de equipo",
+                        ref: "Ref. 5.5.6",
+                        description: "Manual por cada equipo: uso, cuidados, mantenimiento preventivo, referencias al manual del fabricante."
+                    },
+                    {
+                        id: "manual-bioseguridad",
+                        label: "Manual de seguridad e higiene",
+                        ref: "Ref. 5.5.7",
+                        description: "Políticas de bioseguridad: identificación de riesgos, EPP, manejo de derrames, plan de RPBI."
+                    }
                 ]
             },
             {
+                id: "programas",
                 title: "📊 Programas",
                 items: [
-                    { id: "prog-mantenimiento", label: "Programa de mantenimiento preventivo", ref: "Ref. 5.5.9" },
-                    { id: "prog-ci", label: "Control interno de calidad", ref: "Ref. 7.1" },
-                    { id: "prog-peec", label: "Evaluación externa de calidad", ref: "Ref. 7.2" },
-                    { id: "prog-capacitacion", label: "Programa anual de capacitación", ref: "Capacitación" }
+                    {
+                        id: "prog-mantenimiento",
+                        label: "Programa de mantenimiento preventivo",
+                        ref: "Ref. 5.5.9",
+                        description: "Programa anualizado con calendario por equipo, periodicidad, responsable y registros de mantenimiento."
+                    },
+                    {
+                        id: "prog-ci",
+                        label: "Control interno de calidad",
+                        ref: "Ref. 7.1",
+                        description: "Control diario con gráficas Levey-Jennings, reglas de Westgard, acciones correctivas documentadas."
+                    },
+                    {
+                        id: "prog-peec",
+                        label: "Evaluación externa de calidad",
+                        ref: "Ref. 7.2", 
+                        description: "Participación en PEEC/PACAL. Conservar: contrato, informes, investigación de no conformidades."
+                    },
+                    {
+                        id: "prog-desinfeccion",
+                        label: "Programa de desinfección",
+                        ref: "Ref. 5.5.10",
+                        description: "Programa de desinfección y control de plagas. Productos autorizados, frecuencias, bitácoras."
+                    },
+                    {
+                        id: "prog-capacitacion",
+                        label: "Programa anual de capacitación",
+                        ref: "Capacitación",
+                        description: "Plan temático anual: bioseguridad, PNOs, equipos, calidad. Listas de asistencia y constancias."
+                    }
                 ]
             },
             {
+                id: "bitacoras",
                 title: "📋 Bitácoras y Registros",
                 items: [
-                    { id: "bitacora-mant-cal", label: "Bitácora de mantenimiento y calibración", ref: "Ref. 5.5.4" },
-                    { id: "bitacora-temperatura", label: "Bitácora de control de temperatura", ref: "Temperatura" },
-                    { id: "registros-ci", label: "Registros de control interno", ref: "Control Calidad" }
+                    {
+                        id: "bitacora-mant-cal",
+                        label: "Bitácora de mantenimiento y calibración",
+                        ref: "Ref. 5.5.4",
+                        description: "Registro por equipo con fecha, actividad, proveedor, resultados y próxima fecha programada."
+                    },
+                    {
+                        id: "bitacora-temperatura",
+                        label: "Bitácora de control de temperatura",
+                        ref: "Temperatura",
+                        description: "Registro diario de refrigeradores, congeladores, incubadoras. Valores, rangos y acciones por desviaciones."
+                    },
+                    {
+                        id: "registros-ci",
+                        label: "Registros de control interno",
+                        ref: "Control Calidad",
+                        description: "Evidencia completa: valores de control, gráficos, interpretación, acciones correctivas."
+                    }
+                ]
+            },
+            {
+                id: "areas",
+                title: "🏢 Áreas e Infraestructura",
+                items: [
+                    {
+                        id: "recepcion-sala",
+                        label: "Recepción y sala de espera separadas",
+                        ref: "Ref. 5.2.1",
+                        description: "Áreas separadas de áreas técnicas. Control de flujo de pacientes y muestras."
+                    },
+                    {
+                        id: "toma-muestras",
+                        label: "Área de toma con privacidad",
+                        ref: "Ref. 5.2.2-5.2.3",
+                        description: "Área con privacidad, silla con descansabrazos, contenedor para punzocortantes, insumos accesibles."
+                    },
+                    {
+                        id: "areas-proceso",
+                        label: "Barrera entre actividades incompatibles", 
+                        ref: "Ref. 5.2.4",
+                        description: "Separación física entre actividades incompatibles (microbiología vs química). Flujo unidireccional."
+                    },
+                    {
+                        id: "almacen-reactivos",
+                        label: "Almacén de reactivos controlado",
+                        ref: "Ref. 5.2.6",
+                        description: "Almacén seco, ventilado, temperatura controlada. PEPS/FEFO, control de caducidades, hojas de seguridad."
+                    },
+                    {
+                        id: "almacen-rpbi",
+                        label: "Almacén temporal de RPBI",
+                        ref: "Ref. 5.2.7",
+                        description: "Área techada, ventilada, señalizada. Acceso restringido, segregación por tipo de residuo."
+                    }
+                ]
+            },
+            {
+                id: "bioseguridad",
+                title: "🛡️ Bioseguridad",
+                items: [
+                    {
+                        id: "epp-registros",
+                        label: "Dotación y registro de EPP",
+                        ref: "EPP",
+                        description: "Dotación completa y registro por empleado (tallas, fechas, reposición)."
+                    },
+                    {
+                        id: "senializacion",
+                        label: "Señalización de riesgos y EPP",
+                        ref: "Señalización", 
+                        description: "Señalización clara de riesgos y EPP obligatorio por cada área del laboratorio."
+                    },
+                    {
+                        id: "procedimientos-epp",
+                        label: "Procedimientos de EPP por actividad",
+                        ref: "Procedimientos",
+                        description: "Procedimientos escritos que especifican EPP requerido por cada actividad (toma, micro, químicos)."
+                    }
+                ]
+            },
+            {
+                id: "rpbi",
+                title: "🗑️ Manejo de RPBI",
+                items: [
+                    {
+                        id: "clasificacion",
+                        label: "Clasificación y segregación correcta",
+                        ref: "Clasificación",
+                        description: "Clasificación y segregación en el punto de generación: biológico-infeccioso, punzocortante, etc."
+                    },
+                    {
+                        id: "contrato-recolector",
+                        label: "Contrato con recolector autorizado",
+                        ref: "Contrato RPBI",
+                        description: "Contrato vigente con recolector autorizado y manifiestos de recolección firmados."
+                    },
+                    {
+                        id: "contenedores",
+                        label: "Contenedores adecuados",
+                        ref: "Contenedores",
+                        description: "Uso de contenedores rígidos para punzocortantes y bolsas de color/calibre normado."
+                    }
+                ]
+            },
+            {
+                id: "rh",
+                title: "👥 Recursos Humanos",
+                items: [
+                    {
+                        id: "expedientes-rh",
+                        label: "Expediente completo por empleado",
+                        ref: "Expedientes",
+                        description: "Expediente con: CV, identificación, títulos/cédulas, constancias, diplomas."
+                    },
+                    {
+                        id: "descripcion-puesto",
+                        label: "Descripción de puesto firmada",
+                        ref: "Descripción",
+                        description: "Descripción firmada con funciones, responsabilidades y autoridad específica."
+                    },
+                    {
+                        id: "eval-competencias",
+                        label: "Evaluación de competencias",
+                        ref: "Competencias",
+                        description: "Programa y registros de evaluación de competencias por puesto/proceso."
+                    }
+                ]
+            },
+            {
+                id: "trazabilidad",
+                title: "📝 Trazabilidad",
+                items: [
+                    {
+                        id: "solicitud",
+                        label: "Solicitud completa y única",
+                        ref: "Solicitud",
+                        description: "Solicitud completa, única por paciente/muestra con todos los requisitos obligatorios."
+                    },
+                    {
+                        id: "etiquetado",
+                        label: "Etiquetado con 2 identificadores",
+                        ref: "Etiquetado",
+                        description: "Etiquetado frente al paciente con mínimo 2 identificadores (nombre + fecha nacimiento)."
+                    },
+                    {
+                        id: "informe",
+                        label: "Informe con contenidos obligatorios",
+                        ref: "Informe", 
+                        description: "Informe con unidades metrológicas, firma y datos del responsable, valores de referencia."
+                    }
                 ]
             }
         ];
 
-        // Estado de la aplicación
+        // ESTADO DE LA APLICACIÓN
         let estado = {};
         let notas = {};
+        let showOnlyPending = false;
+        let searchQuery = "";
 
-        // Cargar datos guardados
+        // CARGAR DATOS GUARDADOS
         function cargarDatos() {
-            const guardado = localStorage.getItem('labChecklist');
+            const guardado = localStorage.getItem('labChecklistCompleto');
             if (guardado) {
                 try {
                     const datos = JSON.parse(guardado);
                     estado = datos.estado || {};
                     notas = datos.notas || {};
                 } catch (e) {
-                    console.log("No hay datos guardados");
+                    console.log("No hay datos guardados previos");
                 }
             }
         }
 
-        // Guardar datos
+        // GUARDAR DATOS
         function guardarDatos() {
             const datos = {
                 estado,
                 notas,
-                actualizado: new Date().toISOString()
+                actualizado: new Date().toISOString(),
+                version: "2.0"
             };
-            localStorage.setItem('labChecklist', JSON.stringify(datos));
+            localStorage.setItem('labChecklistCompleto', JSON.stringify(datos));
         }
 
-        // Renderizar secciones
+        // RENDERIZAR SECCIONES
         function renderizarSecciones() {
             const container = document.getElementById('sectionsContainer');
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const searchTerm = searchQuery.toLowerCase();
             
             container.innerHTML = '';
             
             sections.forEach(seccion => {
-                const itemsFiltrados = seccion.items.filter(item => 
-                    item.label.toLowerCase().includes(searchTerm) ||
-                    item.ref.toLowerCase().includes(searchTerm) ||
-                    seccion.title.toLowerCase().includes(searchTerm)
-                );
+                const itemsFiltrados = seccion.items.filter(item => {
+                    // Filtro por búsqueda
+                    if (searchTerm) {
+                        const matchesSearch = 
+                            item.label.toLowerCase().includes(searchTerm) ||
+                            item.ref.toLowerCase().includes(searchTerm) ||
+                            item.description.toLowerCase().includes(searchTerm) ||
+                            seccion.title.toLowerCase().includes(searchTerm);
+                        
+                        if (!matchesSearch) return false;
+                    }
+                    
+                    // Filtro por estado (solo pendientes)
+                    if (showOnlyPending && estado[item.id] === 'completed') {
+                        return false;
+                    }
+                    
+                    return true;
+                });
                 
                 if (itemsFiltrados.length === 0) return;
                 
@@ -354,50 +792,63 @@
                 sectionEl.className = 'section';
                 sectionEl.innerHTML = `<h2 class="section-title">${seccion.title}</h2>`;
                 
+                const itemsGrid = document.createElement('div');
+                itemsGrid.className = 'items-grid';
+                
                 itemsFiltrados.forEach(item => {
                     const itemEstado = estado[item.id] || '';
                     const itemNotas = notas[item.id] || '';
                     
                     const itemEl = document.createElement('div');
-                    itemEl.className = `item ${itemEstado === 'total' ? 'completed' : ''}`;
+                    itemEl.className = `item ${itemEstado === 'completed' ? 'completed' : ''} ${itemEstado === 'in-progress' ? 'in-progress' : ''}`;
                     itemEl.innerHTML = `
-                        <div class="item-title">${item.label}</div>
-                        <div class="item-ref">${item.ref}</div>
-                        <div class="status-buttons">
-                            <button class="status-btn total ${itemEstado === 'total' ? 'active' : ''}" 
-                                    onclick="cambiarEstado('${item.id}', 'total')">
-                                ✅ Cumplimiento Total
-                            </button>
-                            <button class="status-btn proceso ${itemEstado === 'proceso' ? 'active' : ''}" 
-                                    onclick="cambiarEstado('${item.id}', 'proceso')">
-                                🟡 En Proceso
-                            </button>
+                        <div class="item-header">
+                            <div class="status-indicator ${itemEstado}"></div>
+                            <div class="item-content">
+                                <div class="item-title">${item.label}</div>
+                                <div class="item-ref">${item.ref}</div>
+                                <div class="item-description">${item.description}</div>
+                                <div class="status-buttons">
+                                    <button class="status-btn ${itemEstado === 'completed' ? 'completed' : ''}" 
+                                            onclick="cambiarEstado('${item.id}', 'completed')">
+                                        ✅ Cumplimiento Total
+                                    </button>
+                                    <button class="status-btn ${itemEstado === 'in-progress' ? 'in-progress' : ''}" 
+                                            onclick="cambiarEstado('${item.id}', 'in-progress')">
+                                        🟡 En Proceso
+                                    </button>
+                                </div>
+                                <div class="notes-section">
+                                    <button class="notes-btn" onclick="toggleNotas('${item.id}', this)">
+                                        ${itemNotas ? '📝 Editar nota' : '✏️ Añadir nota'}
+                                    </button>
+                                    <textarea class="notes-textarea" id="notes-${item.id}" 
+                                              placeholder="Observaciones, evidencia, plan de acción, fechas importantes..."
+                                              oninput="guardarNota('${item.id}', this.value)"
+                                              style="display: ${itemNotas ? 'block' : 'none'}">${itemNotas}</textarea>
+                                </div>
+                            </div>
                         </div>
-                        <button class="notes-btn" onclick="toggleNotas('${item.id}', this)">
-                            ${itemNotas ? '📝 Editar nota' : '✏️ Añadir nota'}
-                        </button>
-                        <textarea class="notes-textarea" id="notes-${item.id}" 
-                                  placeholder="Observaciones, evidencia, plan de acción..."
-                                  oninput="guardarNota('${item.id}', this.value)">${itemNotas}</textarea>
                     `;
                     
-                    sectionEl.appendChild(itemEl);
+                    itemsGrid.appendChild(itemEl);
                 });
                 
+                sectionEl.appendChild(itemsGrid);
                 container.appendChild(sectionEl);
             });
             
             actualizarProgreso();
         }
 
-        // Cambiar estado de un ítem
+        // CAMBIAR ESTADO DE UN ÍTEM
         function cambiarEstado(itemId, nuevoEstado) {
             estado[itemId] = nuevoEstado;
             guardarDatos();
             renderizarSecciones();
         }
 
-        // Alternar visibilidad de notas
+        // ALTERNAR VISIBILIDAD DE NOTAS
         function toggleNotas(itemId, boton) {
             const textarea = document.getElementById(`notes-${itemId}`);
             const estaVisible = textarea.style.display === 'block';
@@ -406,59 +857,73 @@
             boton.textContent = estaVisible ? '✏️ Añadir nota' : '📝 Editar nota';
         }
 
-        // Guardar nota
+        // GUARDAR NOTA
         function guardarNota(itemId, texto) {
             notas[itemId] = texto;
             guardarDatos();
         }
 
-        // Actualizar progreso
+        // ACTUALIZAR PROGRESO
         function actualizarProgreso() {
             const todosItems = sections.flatMap(s => s.items);
             const total = todosItems.length;
-            const completados = Object.values(estado).filter(e => e === 'total').length;
+            const completados = Object.values(estado).filter(e => e === 'completed').length;
             const porcentaje = total ? Math.round((completados / total) * 100) : 0;
             
             document.getElementById('progressValue').textContent = `${porcentaje}%`;
-            document.getElementById('progressText').textContent = `${completados} / ${total} ítems completados`;
+            document.getElementById('progressText').textContent = `${completados} de ${total} ítems completados`;
         }
 
-        // Inicializar aplicación
-        document.addEventListener('DOMContentLoaded', function() {
-            cargarDatos();
-            renderizarSecciones();
-            
-            // Configurar búsqueda
-            document.getElementById('searchInput').addEventListener('input', renderizarSecciones);
-        });
-
-        // Exportar datos
+        // EXPORTAR DATOS
         function exportarDatos() {
             const datos = {
                 sections,
                 estado,
                 notas,
-                exportado: new Date().toISOString()
+                exportado: new Date().toISOString(),
+                totalItems: sections.flatMap(s => s.items).length,
+                completados: Object.values(estado).filter(e => e === 'completed').length,
+                enProceso: Object.values(estado).filter(e => e === 'in-progress').length
             };
             
             const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `cumplimiento-lab-${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `cumplimiento-lab-completo-${new Date().toISOString().split('T')[0]}.json`;
             a.click();
             URL.revokeObjectURL(url);
         }
 
-        // Limpiar todos los datos
+        // LIMPIAR TODOS LOS DATOS
         function limpiarDatos() {
-            if (confirm('¿Estás seguro de que quieres restablecer todos los datos?')) {
+            if (confirm('¿Estás seguro de que quieres restablecer todos los datos? Se perderá todo el progreso guardado.')) {
                 estado = {};
                 notas = {};
-                localStorage.removeItem('labChecklist');
+                localStorage.removeItem('labChecklistCompleto');
                 renderizarSecciones();
+                alert('Todos los datos han sido restablecidos correctamente.');
             }
         }
+
+        // INICIALIZAR APLICACIÓN
+        document.addEventListener('DOMContentLoaded', function() {
+            cargarDatos();
+            renderizarSecciones();
+            
+            // Configurar búsqueda
+            document.getElementById('searchInput').addEventListener('input', function(e) {
+                searchQuery = e.target.value;
+                renderizarSecciones();
+            });
+            
+            // Configurar filtro de pendientes
+            document.getElementById('pendingToggle').addEventListener('click', function() {
+                showOnlyPending = !showOnlyPending;
+                this.classList.toggle('active', showOnlyPending);
+                renderizarSecciones();
+            });
+        });
     </script>
 </body>
 </html>
