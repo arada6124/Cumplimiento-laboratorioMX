@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cumplimiento Normativo - Laboratorio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+            min-height: 100vh;
+            color: #1f2937;
+            padding: 1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .logo-icon {
+            width: 3rem;
+            height: 3rem;
+            background: #1e40af;
+            color: white;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+
+        h1 {
+            color: #1e40af;
+            font-size: 1.5rem;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            font-size: 1rem;
+        }
+
+        .progress-card {
+            background: #1e40af;
+            color: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .progress-circle {
+            width: 80px;
+            height: 80px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .search-box {
+            background: white;
+            border-radius: 1rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+        }
+
+        .section {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section-title {
+            color: #1e40af;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .item {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .item-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .item-ref {
+            color: #6b7280;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+
+        .status-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .status-btn {
+            padding: 0.75rem 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            background: white;
+            cursor: pointer;
+            font-size: 0.875rem;
+            min-height: 44px;
+            flex: 1;
+        }
+
+        .status-btn.total.active {
+            background: #1e40af;
+            color: white;
+            border-color: #1e40af;
+        }
+
+        .status-btn.proceso.active {
+            background: #f59e0b;
+            color: white;
+            border-color: #f59e0b;
+        }
+
+        .notes-btn {
+            background: #dbeafe;
+            color: #1e40af;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+
+        .notes-textarea {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            font-size: 0.875rem;
+            min-height: 100px;
+            resize: vertical;
+            display: none;
+        }
+
+        .item.completed {
+            opacity: 0.7;
+            background: #f0f9ff;
+        }
+
+        .legend {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-color.total {
+            background: #1e40af;
+        }
+
+        .legend-color.proceso {
+            background: #f59e0b;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 0.5rem;
+            }
+            
+            .status-buttons {
+                flex-direction: column;
+            }
+            
+            .status-btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">L</div>
+                <h1>Cumplimiento Laboratorio</h1>
+            </div>
+            <p class="subtitle">Checklist normativo para laboratorios mexicanos</p>
+        </header>
+
+        <div class="progress-card">
+            <div class="progress-circle" id="progressValue">0%</div>
+            <div id="progressText">0 / 0 ítems completados</div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color total"></div>
+                <span>Cumplimiento total</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color proceso"></div>
+                <span>En proceso</span>
+            </div>
+        </div>
+
+        <div class="search-box">
+            <input type="text" class="search-input" id="searchInput" placeholder="🔍 Buscar por ítem o sección...">
+        </div>
+
+        <div id="sectionsContainer">
+            <!-- Las secciones se cargarán aquí -->
+        </div>
+    </div>
+
+    <script>
+        // Datos de la aplicación
+        const sections = [
+            {
+                title: "📄 Documentos y Manuales",
+                items: [
+                    { id: "manual-organizacion", label: "Manual de Organización", ref: "Ref. 5.5.1" },
+                    { id: "manual-proc-admin", label: "Manual de Procedimientos Administrativos", ref: "Ref. 5.5.2" },
+                    { id: "pnos-metodos", label: "PNO por cada método analítico", ref: "Ref. 5.5.3" },
+                    { id: "manual-muestras", label: "Manual de toma y transporte de muestras", ref: "Ref. 5.5.5" }
+                ]
+            },
+            {
+                title: "📊 Programas",
+                items: [
+                    { id: "prog-mantenimiento", label: "Programa de mantenimiento preventivo", ref: "Ref. 5.5.9" },
+                    { id: "prog-ci", label: "Control interno de calidad", ref: "Ref. 7.1" },
+                    { id: "prog-peec", label: "Evaluación externa de calidad", ref: "Ref. 7.2" },
+                    { id: "prog-capacitacion", label: "Programa anual de capacitación", ref: "Capacitación" }
+                ]
+            },
+            {
+                title: "📋 Bitácoras y Registros",
+                items: [
+                    { id: "bitacora-mant-cal", label: "Bitácora de mantenimiento y calibración", ref: "Ref. 5.5.4" },
+                    { id: "bitacora-temperatura", label: "Bitácora de control de temperatura", ref: "Temperatura" },
+                    { id: "registros-ci", label: "Registros de control interno", ref: "Control Calidad" }
+                ]
+            }
+        ];
+
+        // Estado de la aplicación
+        let estado = {};
+        let notas = {};
+
+        // Cargar datos guardados
+        function cargarDatos() {
+            const guardado = localStorage.getItem('labChecklist');
+            if (guardado) {
+                try {
+                    const datos = JSON.parse(guardado);
+                    estado = datos.estado || {};
+                    notas = datos.notas || {};
+                } catch (e) {
+                    console.log("No hay datos guardados");
+                }
+            }
+        }
+
+        // Guardar datos
+        function guardarDatos() {
+            const datos = {
+                estado,
+                notas,
+                actualizado: new Date().toISOString()
+            };
+            localStorage.setItem('labChecklist', JSON.stringify(datos));
+        }
+
+        // Renderizar secciones
+        function renderizarSecciones() {
+            const container = document.getElementById('sectionsContainer');
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            
+            container.innerHTML = '';
+            
+            sections.forEach(seccion => {
+                const itemsFiltrados = seccion.items.filter(item => 
+                    item.label.toLowerCase().includes(searchTerm) ||
+                    item.ref.toLowerCase().includes(searchTerm) ||
+                    seccion.title.toLowerCase().includes(searchTerm)
+                );
+                
+                if (itemsFiltrados.length === 0) return;
+                
+                const sectionEl = document.createElement('div');
+                sectionEl.className = 'section';
+                sectionEl.innerHTML = `<h2 class="section-title">${seccion.title}</h2>`;
+                
+                itemsFiltrados.forEach(item => {
+                    const itemEstado = estado[item.id] || '';
+                    const itemNotas = notas[item.id] || '';
+                    
+                    const itemEl = document.createElement('div');
+                    itemEl.className = `item ${itemEstado === 'total' ? 'completed' : ''}`;
+                    itemEl.innerHTML = `
+                        <div class="item-title">${item.label}</div>
+                        <div class="item-ref">${item.ref}</div>
+                        <div class="status-buttons">
+                            <button class="status-btn total ${itemEstado === 'total' ? 'active' : ''}" 
+                                    onclick="cambiarEstado('${item.id}', 'total')">
+                                ✅ Cumplimiento Total
+                            </button>
+                            <button class="status-btn proceso ${itemEstado === 'proceso' ? 'active' : ''}" 
+                                    onclick="cambiarEstado('${item.id}', 'proceso')">
+                                🟡 En Proceso
+                            </button>
+                        </div>
+                        <button class="notes-btn" onclick="toggleNotas('${item.id}', this)">
+                            ${itemNotas ? '📝 Editar nota' : '✏️ Añadir nota'}
+                        </button>
+                        <textarea class="notes-textarea" id="notes-${item.id}" 
+                                  placeholder="Observaciones, evidencia, plan de acción..."
+                                  oninput="guardarNota('${item.id}', this.value)">${itemNotas}</textarea>
+                    `;
+                    
+                    sectionEl.appendChild(itemEl);
+                });
+                
+                container.appendChild(sectionEl);
+            });
+            
+            actualizarProgreso();
+        }
+
+        // Cambiar estado de un ítem
+        function cambiarEstado(itemId, nuevoEstado) {
+            estado[itemId] = nuevoEstado;
+            guardarDatos();
+            renderizarSecciones();
+        }
+
+        // Alternar visibilidad de notas
+        function toggleNotas(itemId, boton) {
+            const textarea = document.getElementById(`notes-${itemId}`);
+            const estaVisible = textarea.style.display === 'block';
+            
+            textarea.style.display = estaVisible ? 'none' : 'block';
+            boton.textContent = estaVisible ? '✏️ Añadir nota' : '📝 Editar nota';
+        }
+
+        // Guardar nota
+        function guardarNota(itemId, texto) {
+            notas[itemId] = texto;
+            guardarDatos();
+        }
+
+        // Actualizar progreso
+        function actualizarProgreso() {
+            const todosItems = sections.flatMap(s => s.items);
+            const total = todosItems.length;
+            const completados = Object.values(estado).filter(e => e === 'total').length;
+            const porcentaje = total ? Math.round((completados / total) * 100) : 0;
+            
+            document.getElementById('progressValue').textContent = `${porcentaje}%`;
+            document.getElementById('progressText').textContent = `${completados} / ${total} ítems completados`;
+        }
+
+        // Inicializar aplicación
+        document.addEventListener('DOMContentLoaded', function() {
+            cargarDatos();
+            renderizarSecciones();
+            
+            // Configurar búsqueda
+            document.getElementById('searchInput').addEventListener('input', renderizarSecciones);
+        });
+
+        // Exportar datos
+        function exportarDatos() {
+            const datos = {
+                sections,
+                estado,
+                notas,
+                exportado: new Date().toISOString()
+            };
+            
+            const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `cumplimiento-lab-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Limpiar todos los datos
+        function limpiarDatos() {
+            if (confirm('¿Estás seguro de que quieres restablecer todos los datos?')) {
+                estado = {};
+                notas = {};
+                localStorage.removeItem('labChecklist');
+                renderizarSecciones();
+            }
+        }
+    </script>
+</body>
+</html>
