@@ -1,53 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-// ===== Utilidad para contraste de color (para el logo) =====
-function contrastColor(hex = "#2563eb") {
-  let c = hex.replace("#", "");
-  if (c.length === 3) c = c.split("").map((ch) => ch + ch).join("");
-  const r = parseInt(c.slice(0, 2), 16);
-  const g = parseInt(c.slice(2, 4), 16);
-  const b = parseInt(c.slice(4, 6), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 140 ? "#111827" : "#ffffff";
-}
+/**
+ * Lab Compliance Mobile Dashboard
+ * - Checklist con estado (Cumplimiento total | En proceso) + Fecha de creación + Notas
+ * - Descripciones normativas (ayuda contextual por ítem)
+ * - Persistencia local (localStorage)
+ * - Exportar/Importar JSON y Exportar a PDF
+ */
 
-// ===== Logo: Escudo + Beaker + Check (SVG) =====
-function LogoBeakerShield({ initials = "LC", color = "#2563eb", size = 36 }: { initials?: string; color?: string; size?: number }) {
-  const text = contrastColor(color);
-  const id = useMemo(() => `grad-${Math.random().toString(36).slice(2)}`,[color]);
-  return (
-    <div className="flex items-center gap-2">
-      <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="Logo Escudo Beaker">
-        <defs>
-          <linearGradient id={id} x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="1" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.75" />
-          </linearGradient>
-        </defs>
-        {/* Escudo */}
-        <path d="M8 10c10 4 20 4 24 4s14 0 24-4v22c0 12-11 20-24 24C21 52 8 44 8 32Z" fill={`url(#${id})`} stroke={color} strokeWidth="2" />
-        {/* Beaker */}
-        <path d="M24 16h16m-4 0v10l6 14c1 4-2 8-6 8h-8c-4 0-7-4-6-8l6-14V16" fill="none" stroke={text} strokeWidth="2.4" strokeLinecap="round" />
-        <path d="M26 40c6 2 12 2 16 0" stroke={text} strokeWidth="2" opacity=".35" />
-        {/* Check */}
-        <path d="M26 31l4 4 10-10" stroke={text} strokeWidth="3" strokeLinecap="round" fill="none" />
-      </svg>
-      <span className="font-bold text-sm" style={{ color }}>{initials}</span>
-    </div>
-  );
-}
-
-// ----- Tipos -----
+// ===== Tipos =====
 type ChecklistItem = {
   id: string;
   label: string;
   ref?: string;
   notes?: string;
-  maxScore?: number;
-  score?: number;
-  dueDate?: string;
-  priority?: "alta" | "media" | "baja";
-  category?: string;
 };
 
 type Section = {
@@ -56,9 +22,9 @@ type Section = {
   items: ChecklistItem[];
 };
 
-type Status = "total" | "proceso" | "pendiente"; // total = Cumplimiento total; proceso = En proceso
+type Status = "total" | "proceso"; // total = Cumplimiento total; proceso = En proceso
 
-const STORAGE_KEY = "labComplianceApp_v4"; // nueva versión con sistema de evaluación
+const STORAGE_KEY = "labComplianceApp_v3";
 
 // Utilidad para crear IDs a partir del texto
 const slug = (s: string) =>
@@ -69,196 +35,280 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
-// ----- Descripciones normativas (del documento proporcionado) -----
+// ----- Descripciones normativas -----
 const DESCS: Record<string, string> = {
-  // ... (mantener todas las descripciones existentes)
+  // Documentos y Manuales
   "manual-organizacion": `¿Qué es? Define la estructura y filosofía del laboratorio.\nContenido mínimo: índice; introducción; misión y visión; organigrama con líneas de autoridad; objetivo del manual; **descripción de puestos y funciones** (p. ej. Responsable Sanitario, Químico Analista, Técnico, Recepción); perfiles y requisitos; firmas.\nEvidencia de cumplimiento: organigrama vigente, descripciones firmadas, actualización controlada de versión.`,
-  // ... (todas las demás descripciones)
+  "manual-proc-admin": `¿Qué es? Conjunto de **procedimientos no analíticos**.\nIncluye: recepción/registro de pacientes, **toma y recepción de muestras**, solicitud de estudios, entrega de resultados, compras e inventarios, atención a usuarios.\nAnexos: **diagramas de flujo** y **formatos** (solicitudes, etiquetas, recibos).`,
+  "pnos-metodos": `¿Qué es? **PNO por cada prueba** que realiza el laboratorio.\nContenido: nombre del método; **fundamento**; preparación (reactivos/controles/calibradores); **procedimiento paso a paso**; criterios de aceptación; cálculo y reporte de resultados; **valores de referencia**; seguridad; **bibliografía** (insertos del fabricante).`,
+  "manual-muestras": `¿Qué es? Guía de **toma, identificación, conservación y transporte**.\nIncluye: preparación del paciente; materiales/contendedores; **criterios de aceptación/rechazo**; tiempos máximos; temperatura y conservación; bioseguridad; cadena de custodia; instrucciones por prueba.`,
+  "manual-equipo": `¿Qué es? **Manual por equipo**.\nContenido: identificación (marca/modelo); **uso** (encendido, operación, apagado); **cuidados**; **mantenimiento preventivo** del usuario; referencias al **manual del fabricante**.`,
+  "manual-bioseguridad": `¿Qué es? Políticas y prácticas para proteger al personal y ambiente.\nContenido: **identificación de riesgos** (químicos, biológicos, físicos); **EPP** por actividad; señalización; manejo de derrames y accidentes; exposición ocupacional; ubicación de **extintores, regaderas, lavaojos**; **plan de manejo de RPBI**.`,
+
+  // Programas
+  "prog-mantenimiento": `Programa anual de **mantenimiento preventivo**.\nIncluye: calendario por equipo; periodicidad (mensual/trimestral/semestral/anual); responsable; proveedor; **registros/bitácoras**.`,
+  "prog-ci": `Control **interno** diario de calidad.\nIncluye: controles por analito/lote; **gráficas Levey–Jennings**; **reglas de Westgard**; acciones correctivas; evidencia firmada.`,
+  "prog-peec": `Participación en **evaluación externa** (p. ej., PACAL).\nDebes conservar: contrato; **informes PEEC**; revisión y **firma del responsable**; **investigación de no conformidades** y acciones correctivas.`,
+  "prog-desinfeccion": `Programa de **desinfección y control de plagas**.\nIncluye: productos autorizados; frecuencias; áreas cubiertas; responsable; **bitácoras** y certificados del proveedor.`,
+  "prog-capacitacion": `Programa **anual de capacitación**.\nIncluye: plan temático (bioseguridad, PNO, equipos, calidad); calendario; listas de asistencia; **evaluación de competencias**; constancias.`,
+
+  // Bitácoras y registros
+  "bitacora-mant-cal": `Registro de **mantenimientos y calibraciones** por equipo.\nDebe incluir: fecha, actividad, proveedor/realizador, resultados, próxima fecha.`,
+  "bitacora-temperatura": `Registro diario de **temperaturas** (refrigeradores, congeladores, incubadoras).\nIncluye: valores, rango aceptable, **acciones** cuando hay desviaciones.`,
+  "registros-ci": `Evidencia del **control interno**: valores de control, gráficos, interpretación, **acciones correctivas**.`,
+
+  // Áreas e infraestructura
+  "recepcion-sala": `**Recepción y sala** separadas de áreas técnicas; control de flujo de pacientes y muestras.`,
+  "toma-muestras": `Área de **toma** con privacidad; silla con descansabrazo; contenedor rígido para punzocortantes; insumos a la mano; higiene.`,
+  "areas-proceso": `Separación/barrera entre **actividades incompatibles** (p. ej., microbiología vs. química); flujo unidireccional.`,
+  "lavado-esteril": `**Lavado y esterilización** físicamente separados del análisis; procedimientos y soluciones validadas.`,
+  "almacen-reactivos": `Almacén **seco, ventilado, controlado**; FEFO/PEPS; control de caducidades; hojas de seguridad (SDS).`,
+  "almacen-rpbi": `Almacén **temporal de RPBI** techado, ventilado, señalizado; acceso restringido; segregación por tipo.`,
+
+  // Bioseguridad – Campana
+  "bsc-clase2": `**Campana de Bioseguridad Clase II** para actividades de microbiología que lo requieran.`,
+  "bsc-cert": `**Certificación anual** de flujo y filtros HEPA por personal calificado; etiquetar con fecha/vencimiento.`,
+  "bsc-ubicacion": `Ubicar lejos de **corrientes de aire** (puertas/ventanas/aires) y tránsito; nivelación adecuada.`,
+  "bsc-operacion": `Operación segura: **purgado**, trabajo dentro de la zona segura, mantener rejillas despejadas, limpieza antes/después.`,
+
+  // Subcontratación
+  "contrato-ref": `**Contrato** con laboratorio de referencia (responsabilidad mancomunada).`,
+  "listado-pruebas": `Listado de **pruebas subcontratadas** con **TAT** y condiciones.`,
+  "cond-transporte": `Condiciones de **transporte y conservación** de muestras; embalaje adecuado; tiempos máximos.`,
+  "confidencialidad": `Cláusulas de **confidencialidad** y protección de datos personales.`,
+  "evidencias-legales": `Evidencia de **Aviso/Licencia** del laboratorio de referencia y su alcance.`,
+
+  // Aseguramiento de la calidad
+  "proc-nc-peec": `**Procedimiento** para investigar **no conformidades** (internas/PEEC): causa raíz, acciones correctivas/preventivas.`,
+  "bitacora-nc": `**Bitácora** con folio, hallazgo, análisis de causa, acción, verificación y cierre.`,
+  "verif-eficacia": `Comprobar la **eficacia** de las acciones (revisión posterior, indicadores).`,
+
+  // Higiene y bioseguridad
+  "epp-registros": `Dotación y **registro** de EPP por empleado (tallas, fechas, reposición).`,
+  "senializacion": `**Señalización** de riesgos y EPP obligatorio por área.`,
+  "procedimientos-epp": `Procedimientos que especifican **EPP por actividad** (toma, micro, químicos, limpieza).`,
+  "supervision": `Rondas con **checklist** y registros de correcciones.`,
+  "induccion": `**Inducción** de bioseguridad para personal nuevo y evaluaciones periódicas.`,
+
+  // RPBI
+  "clasificacion": `**Clasificación/segregación** en el punto de generación: biológico-infeccioso, punzocortante, etc.`,
+  "contrato-recolector": `**Contrato** vigente con **recolector autorizado** y manifiestos firmados.`,
+  "manifiestos": `Archivo de **manifiestos** ≥ 5 años; trazabilidad completa.`,
+  "contenedores": `Uso de **contenedores** adecuados: rígidos para punzocortantes; bolsas de color y calibre normado.`,
+
+  // Recursos humanos
+  "expedientes-rh": `**Expediente por empleado**: CV, identificación, títulos/cédulas o diplomas, constancias.`,
+  "descripcion-puesto": `**Descripción de puesto** firmada: funciones, responsabilidades y autoridad.`,
+  "constancias-cap": `**Constancias** de capacitación y evaluaciones integradas al expediente.`,
+  "eval-competencias": `Programa y registros de **evaluación de competencias** por puesto/proceso.`,
+
+  // Insumos
+  "proc-recepcion": `Procedimiento de **recepción**: verificación, registro, cuarentena si aplica.`,
+  "checklist-recepcion": `**Checklist**: correspondencia con pedido, caducidad, **registro sanitario**, integridad, condiciones de transporte.`,
+  "peps-etiquetado": `**PEPS/FEFO** y **etiquetado** de recepción y **apertura**; control de caducidades.`,
+
+  // SGC
+  "revision-direccion": `**Revisión por la Dirección** anual: objetivos, desempeño de calidad, recursos y mejoras.`,
+  "control-docs": `**Control de documentos** y versiones: responsables, historial de cambios, copias controladas.`,
+  "auditoria-interna": `**Auditorías internas** planificadas con informes y seguimientos.`,
+
+  // Verificación sanitaria
+  "carpeta-verificacion": `Carpeta con **Avisos/Licencias**, RPBI, PEEC, mantenimientos, control de plagas, bitácoras clave.`,
+  "capacitacion-personal": `El personal **sabe explicar** su función y **ubicar** manuales/PNO; simulacros de preguntas.`,
+  "recorrido-visual": `Recorrido crítico: orden/limpieza, **identificación**, bioseguridad, seguridad. Correcciones evidenciadas.`,
+
+  // Trazabilidad
+  "solicitud": `**Solicitud** completa, única por paciente/muestra; requisitos obligatorios.`,
+  "etiquetado": `**Etiquetado frente al paciente** con ≥ 2 identificadores.`,
+  "registro-lis": `**Registro cronológico** (folio) en bitácora/LIS que vincule todo el flujo.`,
+  "informe": `**Informe** con contenidos obligatorios (unidades metrológicas, firma y datos del responsable).`,
+
+  // Verificación/validación de métodos
+  "precision": `**Precisión**: repetibilidad/reproducibilidad documentadas.`,
+  "exactitud": `**Exactitud**: comparación contra valor verdadero/material de referencia.`,
+  "rango": `**Rango reportable** verificado.`,
+  "valores-ref": `**Valores de referencia** validados para la población atendida.`,
+  "carpeta-verif": `Carpeta firmada por **Responsable Sanitario** con el estudio de verificación/validación.`,
+
+  // Quejas
+  "proc-quejas": `Procedimiento para **quejas y reclamaciones**: recepción, investigación, respuesta y cierre.`,
+  "bitacora-quejas": `**Bitácora central** con acciones correctivas/preventivas y trazabilidad de atención.`,
 };
 
-// ===== SISTEMA DE EVALUACIÓN Y CALIFICACIÓN =====
-type EvaluationCriteria = {
-  id: string;
-  label: string;
-  maxScore: number;
-};
+// ----- Datos base -----
+const initialSections: Section[] = [
+  {
+    id: "docs",
+    title: "Documentos y Manuales",
+    items: [
+      { id: "manual-organizacion", label: "Manual de Organización", ref: "Ref. 5.5.1" },
+      { id: "manual-proc-admin", label: "Manual de Procedimientos Administrativos", ref: "Ref. 5.5.2" },
+      { id: "pnos-metodos", label: "PNO por cada método analítico (catálogo de pruebas)", ref: "Ref. 5.5.3" },
+      { id: "manual-muestras", label: "Manual de toma, identificación, conservación y transporte de muestras", ref: "Ref. 5.5.5" },
+      { id: "manual-equipo", label: "Manual de manejo de equipo por cada equipo", ref: "Ref. 5.5.6" },
+      { id: "manual-bioseguridad", label: "Manual de seguridad e higiene (y radiológica si aplica)", ref: "Ref. 5.5.7" },
+    ],
+  },
+  {
+    id: "programas",
+    title: "Programas",
+    items: [
+      { id: "prog-mantenimiento", label: "Programa de mantenimiento preventivo anualizado", ref: "Ref. 5.5.9" },
+      { id: "prog-ci", label: "Programa de control interno de la calidad (reglas de Westgard, LJ)", ref: "Ref. 7.1" },
+      { id: "prog-peec", label: "Programa de evaluación externa de la calidad (PEEC/PACAL)", ref: "Ref. 7.2" },
+      { id: "prog-desinfeccion", label: "Programa de desinfección y desinfestación (incluye control de plagas)", ref: "Ref. 5.5.10" },
+      { id: "prog-capacitacion", label: "Programa anual de capacitación (bioseguridad, PNOs, equipos)", ref: "Capacitación" },
+    ],
+  },
+  {
+    id: "bitacoras",
+    title: "Bitácoras y Registros",
+    items: [
+      { id: "bitacora-mant-cal", label: "Bitácora de mantenimiento y calibración de equipo", ref: "Ref. 5.5.4" },
+      { id: "bitacora-temperatura", label: "Bitácora de control de temperatura (refrigeradores, incubadoras, etc.)" },
+      { id: "registros-ci", label: "Registros de control interno (resultados, LJ, acciones correctivas)" },
+    ],
+  },
+  {
+    id: "areas",
+    title: "Áreas e Infraestructura",
+    items: [
+      { id: "recepcion-sala", label: "Recepción y sala de espera separadas de áreas de proceso", ref: "Ref. 5.2.1" },
+      { id: "toma-muestras", label: "Área de toma de muestras con privacidad y mobiliario adecuado", ref: "Ref. 5.2.2-5.2.3" },
+      { id: "areas-proceso", label: "Secciones analíticas; barrera física entre actividades incompatibles", ref: "Ref. 5.2.4" },
+      { id: "lavado-esteril", label: "Lavado y esterilización separadas de análisis", ref: "Ref. 5.2.5" },
+      { id: "almacen-reactivos", label: "Almacén de reactivos/materiales (seco, ventilado, temperatura controlada)", ref: "Ref. 5.2.6" },
+      { id: "almacen-rpbi", label: "Almacén temporal de RPBI (separado, techado y señalizado)", ref: "Ref. 5.2.7" },
+    ],
+  },
+  {
+    id: "bsc",
+    title: "Bioseguridad – Campana",
+    items: [
+      { id: "bsc-clase2", label: "Campana de Bioseguridad Clase II para microbiología de rutina", ref: "Recomendación" },
+      { id: "bsc-cert", label: "Certificación anual de flujos y HEPA por personal calificado" },
+      { id: "bsc-ubicacion", label: "Ubicación libre de corrientes (puertas/ventanas/aires)" },
+      { id: "bsc-operacion", label: "Capacitación en operación segura (purgado, rejillas, zona de trabajo)" },
+    ],
+  },
+  {
+    id: "subcontratacion",
+    title: "Servicios de Referencia/Subcontratación",
+    items: [
+      { id: "contrato-ref", label: "Contrato vigente con laboratorio de referencia (responsabilidad mancomunada)", ref: "Ref. 6.2" },
+      { id: "listado-pruebas", label: "Listado de pruebas subcontratadas y tiempos de entrega" },
+      { id: "cond-transporte", label: "Condiciones de transporte y manejo de muestras" },
+      { id: "confidencialidad", label: "Cláusulas de confidencialidad y protección de datos" },
+      { id: "evidencias-legales", label: "Evidencia de Aviso/Licencia del laboratorio de referencia" },
+    ],
+  },
+  {
+    id: "aseguramiento",
+    title: "Aseguramiento de la Calidad",
+    items: [
+      { id: "proc-nc-peec", label: "Procedimiento de investigación de no conformidades (PEEC)" },
+      { id: "bitacora-nc", label: "Bitácora de NC con causa raíz, acciones correctivas y preventivas" },
+      { id: "verif-eficacia", label: "Verificación de eficacia de acciones correctivas" },
+    ],
+  },
+  {
+    id: "higiene",
+    title: "Higiene y Bioseguridad",
+    items: [
+      { id: "epp-registros", label: "Dotación y registro de EPP por empleado" },
+      { id: "senializacion", label: "Señalización de riesgos y EPP obligatorio" },
+      { id: "procedimientos-epp", label: "Procedimientos escritos que especifiquen EPP por actividad" },
+      { id: "supervision", label: "Supervisión y rondas con checklist de cumplimiento" },
+      { id: "induccion", label: "Inducción y capacitación de bioseguridad a personal nuevo" },
+    ],
+  },
+  {
+    id: "rpbi",
+    title: "RPBI",
+    items: [
+      { id: "clasificacion", label: "Clasificación y segregación correcta en el punto de generación" },
+      { id: "contrato-recolector", label: "Contrato vigente con recolector autorizado" },
+      { id: "manifiestos", label: "Manifiestos de recolección archivados (≥ 5 años)" },
+      { id: "contenedores", label: "Contenedores/bolsas adecuados (punzocortantes rígidos, colores)" },
+    ],
+  },
+  {
+    id: "rh",
+    title: "Recursos Humanos",
+    items: [
+      { id: "expedientes-rh", label: "Expediente por empleado (CV, ID, títulos/cédulas, diplomas)" },
+      { id: "descripcion-puesto", label: "Descripciones de puesto firmadas (funciones/responsabilidades)" },
+      { id: "constancias-cap", label: "Constancias de capacitación en expediente" },
+      { id: "eval-competencias", label: "Programa y registros de evaluación de competencias" },
+    ],
+  },
+  {
+    id: "insumos",
+    title: "Recepción y Control de Insumos",
+    items: [
+      { id: "proc-recepcion", label: "Procedimiento de recepción de insumos" },
+      { id: "checklist-recepcion", label: "Checklist: correspondencia, caducidad, registro sanitario, integridad, transporte" },
+      { id: "peps-etiquetado", label: "PEPS y etiquetado: fecha de recepción y apertura" },
+    ],
+  },
+  {
+    id: "sgc",
+    title: "Sistema de Gestión de la Calidad (SGC)",
+    items: [
+      { id: "revision-direccion", label: "Revisión anual por la dirección (objetivos, mejoras)" },
+      { id: "control-docs", label: "Control de documentos y versiones (historial de cambios)" },
+      { id: "auditoria-interna", label: "Auditorías internas periódicas" },
+    ],
+  },
+  {
+    id: "verificacion",
+    title: "Preparación Visita de Verificación",
+    items: [
+      { id: "carpeta-verificacion", label: "Carpeta con: Avisos/Licencia, RPBI, PEEC, mantenimientos, plagas, etc." },
+      { id: "capacitacion-personal", label: "Personal entrenado para explicar funciones y ubicar manuales/PNOs" },
+      { id: "recorrido-visual", label: "Recorrido crítico: orden/limpieza, identificación, bioseguridad, seguridad" },
+    ],
+  },
+  {
+    id: "trazabilidad",
+    title: "Trazabilidad del Paciente y la Muestra",
+    items: [
+      { id: "solicitud", label: "Solicitud completa y vinculada de forma única al paciente/muestra" },
+      { id: "etiquetado", label: "Etiquetado frente al paciente con ≥ 2 identificadores (p. ej., nombre + fecha nac.)" },
+      { id: "registro-lis", label: "Registro cronológico (folio) en bitácora/LIS que vincule todo el flujo" },
+      { id: "informe", label: "Informe de resultados con contenidos obligatorios (unidades NOM-008, firma, etc.)" },
+    ],
+  },
+  {
+    id: "verif-metodos",
+    title: "Verificación/Validación de Métodos",
+    items: [
+      { id: "precision", label: "Verificación de precisión (repetibilidad/reproducibilidad)" },
+      { id: "exactitud", label: "Verificación de exactitud (contra valor verdadero)" },
+      { id: "rango", label: "Rango reportable verificado" },
+      { id: "valores-ref", label: "Valores de referencia validados/aplicables a la población" },
+      { id: "carpeta-verif", label: "Carpeta de verificación/validación firmada por el Responsable Sanitario" },
+    ],
+  },
+  {
+    id: "quejas",
+    title: "Quejas, Reclamaciones y NC del Servicio",
+    items: [
+      { id: "proc-quejas", label: "Procedimiento formal de gestión de quejas (recepción, investigación, resolución)" },
+      { id: "bitacora-quejas", label: "Bitácora central con acciones correctivas y preventivas" },
+    ],
+  },
+];
 
-type EvaluationModalProps = {
-  item: ChecklistItem;
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (score: number, notes: string, status: Status) => void;
-};
-
-// Modal de evaluación con criterios detallados
-function EvaluationModal({ item, isOpen, onClose, onSave }: EvaluationModalProps) {
-  const [score, setScore] = useState(item.score || 0);
-  const [notes, setNotes] = useState(item.notes || "");
-  const [status, setStatus] = useState<Status>(item.score === (item.maxScore || 10) ? "total" : item.score && item.score > 0 ? "proceso" : "pendiente");
-
-  const maxScore = item.maxScore || 10;
-  const criteria: EvaluationCriteria[] = [
-    { id: "documentacion", label: "Documentación completa", maxScore: 3 },
-    { id: "implementacion", label: "Implementación efectiva", maxScore: 4 },
-    { id: "evidencias", label: "Evidencias disponibles", maxScore: 3 }
-  ];
-
-  const handleSave = () => {
-    onSave(score, notes, status);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold">Evaluar: {item.label}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
-        </div>
-
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-          <h4 className="font-semibold mb-2">Descripción del requerimiento:</h4>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">
-            {DESCS[item.id] || "Guía: especifica propósito, contenido mínimo y evidencia esperada."}
-          </p>
-        </div>
-
-        {/* Criterios de evaluación */}
-        <div className="mb-6">
-          <h4 className="font-semibold mb-3">Criterios de Evaluación:</h4>
-          {criteria.map((criterion) => (
-            <div key={criterion.id} className="flex justify-between items-center mb-3 p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm">{criterion.label}</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  max={criterion.maxScore}
-                  className="w-16 p-1 border rounded text-center"
-                  placeholder="0"
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value) || 0;
-                    const newScore = criteria.reduce((acc, curr, idx) => 
-                      acc + (curr.id === criterion.id ? Math.min(value, curr.maxScore) : 0), 0);
-                    setScore(Math.min(newScore, maxScore));
-                  }}
-                />
-                <span className="text-xs text-gray-500">/ {criterion.maxScore}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Score total */}
-        <div className="mb-4 p-4 bg-yellow-50 rounded-lg">
-          <div className="flex justify-between items-center">
-            <span className="font-semibold">Puntuación Total:</span>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold">{score}</span>
-              <span className="text-gray-500">/ {maxScore}</span>
-            </div>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-            <div 
-              className="bg-green-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(score / maxScore) * 100}%` }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Estado del item */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Estado de Cumplimiento:</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setStatus("total")}
-              className={`flex-1 py-2 px-3 rounded-lg border transition ${
-                status === "total"
-                  ? "bg-green-600 border-green-600 text-white"
-                  : "bg-white border-gray-300 text-green-700 hover:bg-green-50"
-              }`}
-            >
-              Cumplimiento Total
-            </button>
-            <button
-              onClick={() => setStatus("proceso")}
-              className={`flex-1 py-2 px-3 rounded-lg border transition ${
-                status === "proceso"
-                  ? "bg-yellow-500 border-yellow-500 text-white"
-                  : "bg-white border-gray-300 text-yellow-700 hover:bg-yellow-50"
-              }`}
-            >
-              En Proceso
-            </button>
-            <button
-              onClick={() => setStatus("pendiente")}
-              className={`flex-1 py-2 px-3 rounded-lg border transition ${
-                status === "pendiente"
-                  ? "bg-red-500 border-red-500 text-white"
-                  : "bg-white border-gray-300 text-red-700 hover:bg-red-50"
-              }`}
-            >
-              Pendiente
-            </button>
-          </div>
-        </div>
-
-        {/* Notas */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-2">Observaciones y Evidencias:</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Registre observaciones, evidencias encontradas, planes de acción..."
-            className="w-full rounded-lg border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            rows={4}
-          />
-        </div>
-
-        {/* Acciones */}
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Guardar Evaluación
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ===== COMPONENTE PRINCIPAL MEJORADO =====
+// ===== Componente Principal =====
 export default function LabComplianceDashboard() {
   const [sections, setSections] = useState<Section[]>(initialSections);
   const [status, setStatus] = useState<Record<string, Status | undefined>>({});
   const [createdAt, setCreatedAt] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [scores, setScores] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [evaluationModal, setEvaluationModal] = useState<{isOpen: boolean; item: ChecklistItem | null}>({isOpen: false, item: null});
-
-  // Self-tests
-  useEffect(() => {
-    try {
-      const items = sections.flatMap((s) => s.items.map((it) => it.id));
-      console.assert(items.length > 0, "[TEST] Debe haber ítems definidos");
-      console.info("[TEST] Autoverificación terminada.");
-    } catch (err) {
-      console.error("[TEST] Error en self-tests:", err);
-    }
-  }, [sections]);
 
   // Cargar del almacenamiento local
   useEffect(() => {
@@ -270,31 +320,23 @@ export default function LabComplianceDashboard() {
         if (parsed.status) setStatus(parsed.status);
         if (parsed.createdAt) setCreatedAt(parsed.createdAt);
         if (parsed.notes) setNotes(parsed.notes);
-        if (parsed.scores) setScores(parsed.scores);
       }
     } catch {}
   }, []);
 
   // Guardar en almacenamiento local
   useEffect(() => {
-    const payload = { sections, status, createdAt, notes, scores };
+    const payload = { sections, status, createdAt, notes };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [sections, status, createdAt, notes, scores]);
+  }, [sections, status, createdAt, notes]);
 
   // Lista plana de todos los ítems
   const allItems = useMemo(
     () =>
       sections.flatMap((sec) =>
-        sec.items.map((it) => ({ 
-          ...it, 
-          sectionId: sec.id, 
-          sectionTitle: sec.title,
-          score: scores[it.id] || 0,
-          maxScore: it.maxScore || 10,
-          status: status[it.id] || 'pendiente'
-        }))
+        sec.items.map((it) => ({ ...it, sectionId: sec.id, sectionTitle: sec.title }))
       ),
-    [sections, scores, status]
+    [sections]
   );
 
   // Filtro por búsqueda y pendientes
@@ -311,47 +353,18 @@ export default function LabComplianceDashboard() {
     });
   }, [allItems, status, query, showOnlyPending]);
 
-  // Cálculos de progreso MEJORADOS
+  // Cálculos de progreso
   const totals = useMemo(() => {
     const total = allItems.length;
     const done = allItems.reduce((acc, it) => acc + (status[it.id] === "total" ? 1 : 0), 0);
-    const inProgress = allItems.reduce((acc, it) => acc + (status[it.id] === "proceso" ? 1 : 0), 0);
-    const pending = allItems.reduce((acc, it) => acc + (!status[it.id] || status[it.id] === "pendiente" ? 1 : 0), 0);
-    
-    // Calificación promedio basada en scores
-    const totalScore = allItems.reduce((acc, it) => acc + (scores[it.id] || 0), 0);
-    const maxPossibleScore = allItems.reduce((acc, it) => acc + (it.maxScore || 10), 0);
-    const averageScore = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
-    
-    // Items críticos (score bajo)
-    const criticalItems = allItems.filter(it => {
-      const score = scores[it.id] || 0;
-      const maxScore = it.maxScore || 10;
-      return score < maxScore * 0.5 && status[it.id] !== "total";
-    }).length;
-
     const pct = total ? Math.round((done / total) * 100) : 0;
-    
-    return { total, done, inProgress, pending, pct, averageScore, criticalItems, totalScore, maxPossibleScore };
-  }, [allItems, status, scores]);
+    return { total, done, pct };
+  }, [allItems, status]);
 
-  // Acciones MEJORADAS
+  // Acciones
   const setItemStatus = (id: string, value: Status) => {
     setStatus((prev) => ({ ...prev, [id]: value }));
     setCreatedAt((prev) => ({ ...prev, [id]: prev[id] || new Date().toISOString().slice(0, 10) }));
-  };
-
-  const setItemScore = (id: string, score: number) => {
-    setScores(prev => ({ ...prev, [id]: score }));
-    // Actualizar estado automáticamente basado en el score
-    const maxScore = allItems.find(it => it.id === id)?.maxScore || 10;
-    if (score === maxScore) {
-      setStatus(prev => ({ ...prev, [id]: "total" }));
-    } else if (score > 0) {
-      setStatus(prev => ({ ...prev, [id]: "proceso" }));
-    } else {
-      setStatus(prev => ({ ...prev, [id]: "pendiente" }));
-    }
   };
 
   const setItemDate = (id: string, value: string) => {
@@ -362,16 +375,6 @@ export default function LabComplianceDashboard() {
     setNotes((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleEvaluate = (item: ChecklistItem) => {
-    setEvaluationModal({ isOpen: true, item });
-  };
-
-  const handleSaveEvaluation = (itemId: string, score: number, notes: string, status: Status) => {
-    setItemScore(itemId, score);
-    setItemNote(itemId, notes);
-    setItemStatus(itemId, status);
-  };
-
   const addCustomItem = (sectionId: string) => {
     const label = prompt("Describe el nuevo punto de verificación (ítem)");
     if (!label) return;
@@ -379,21 +382,13 @@ export default function LabComplianceDashboard() {
       prev.map((s) => {
         if (s.id !== sectionId) return s;
         const id = slug(`${sectionId}-${label}`).slice(0, 64);
-        return { ...s, items: [...s.items, { id, label, maxScore: 10 }] };
+        return { ...s, items: [...s.items, { id, label }] };
       })
     );
   };
 
   const exportJSON = () => {
-    const payload = { 
-      sections, 
-      status, 
-      createdAt, 
-      notes, 
-      scores,
-      totals,
-      exportedAt: new Date().toISOString() 
-    };
+    const payload = { sections, status, createdAt, notes, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -412,7 +407,6 @@ export default function LabComplianceDashboard() {
         if (parsed.status) setStatus(parsed.status);
         if (parsed.createdAt) setCreatedAt(parsed.createdAt);
         if (parsed.notes) setNotes(parsed.notes);
-        if (parsed.scores) setScores(parsed.scores);
         alert("Datos importados correctamente.");
       } catch (e) {
         alert("Archivo no válido.");
@@ -427,61 +421,62 @@ export default function LabComplianceDashboard() {
     setStatus({});
     setCreatedAt({});
     setNotes({});
-    setScores({});
     localStorage.removeItem(STORAGE_KEY);
   };
 
-  // Render de un ítem MEJORADO
-  const ItemRow: React.FC<{ it: ChecklistItem & { sectionId: string; sectionTitle: string; score: number; maxScore: number; status: Status } }> = ({ it }) => {
-    const st = status[it.id] || 'pendiente';
+  // Render de un ítem
+  const ItemRow: React.FC<{ it: ChecklistItem }> = ({ it }) => {
+    const st = status[it.id];
     const dt = createdAt[it.id] || "";
     const n = notes[it.id] || "";
-    const score = scores[it.id] || 0;
     const [openNote, setOpenNote] = useState(false);
     const [openInfo, setOpenInfo] = useState(false);
 
-    const scorePercentage = (score / it.maxScore) * 100;
-    const scoreColor = scorePercentage >= 80 ? 'bg-green-500' : 
-                      scorePercentage >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+    const badge = (
+      <div className="flex items-center gap-2 mt-2">
+        <button
+          onClick={() => setItemStatus(it.id, "total")}
+          className={`text-xs px-2 py-1 rounded-lg border transition ${
+            st === "total"
+              ? "bg-blue-600 border-blue-600 text-white"
+              : "bg-white border-gray-300 text-blue-700 hover:bg-blue-50"
+          }`}
+        >
+          Cumplimiento total
+        </button>
+        <button
+          onClick={() => setItemStatus(it.id, "proceso")}
+          className={`text-xs px-2 py-1 rounded-lg border transition ${
+            st === "proceso"
+              ? "bg-amber-500 border-amber-500 text-white"
+              : "bg-white border-gray-300 text-amber-700 hover:bg-amber-50"
+          }`}
+        >
+          En proceso
+        </button>
+      </div>
+    );
 
     return (
       <div className={`w-full rounded-xl border p-3 mb-2 bg-white/80 shadow-sm ${st === "total" ? "opacity-85" : ""}`}>
         <div className="flex items-start gap-3">
-          {/* Indicador circular con score */}
-          <div className="relative mt-1.5">
-            <div className={`h-4 w-4 rounded-full border ${st === "total" ? "bg-green-600 border-green-600" : st === "proceso" ? "bg-yellow-400 border-yellow-400" : "bg-gray-300 border-gray-300"}`} />
-            {score > 0 && (
-              <div className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                {score}
-              </div>
-            )}
-          </div>
-          
+          {/* Indicador circular pequeño según estado */}
+          <div
+            className={`mt-1.5 h-4 w-4 rounded-full border ${
+              st === "total" ? "bg-blue-600 border-blue-600" : st === "proceso" ? "bg-amber-400 border-amber-400" : "bg-white border-gray-300"
+            }`}
+            aria-hidden
+          />
           <div className="flex-1">
             <div className="text-sm md:text-base font-medium text-gray-900">{it.label}</div>
             {it.ref && <div className="text-xs text-gray-500 mt-0.5">{it.ref}</div>}
 
-            {/* Barra de progreso del score */}
-            {score > 0 && (
-              <div className="mt-2">
-                <div className="flex justify-between text-xs mb-1">
-                  <span>Progreso: {score}/{it.maxScore}</span>
-                  <span>{Math.round(scorePercentage)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full ${scoreColor} transition-all duration-300`}
-                    style={{ width: `${scorePercentage}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
             {/* Botón de ayuda */}
-            <div className="mt-2">
+            <div className="mt-1">
               <button
                 onClick={() => setOpenInfo((v) => !v)}
                 className="text-xs px-2 py-1 rounded-lg bg-white border hover:bg-blue-50"
+                aria-expanded={openInfo}
               >
                 {openInfo ? "Ocultar: ¿Qué significa?" : "¿Qué significa y cómo cumplir?"}
               </button>
@@ -492,71 +487,43 @@ export default function LabComplianceDashboard() {
               </div>
             )}
 
-            {/* Botones de acción MEJORADOS */}
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {badge}
+
+            {/* Fecha de creación */}
+            <div className="mt-2 grid grid-cols-[max-content_1fr_max-content] items-center gap-2">
+              <label className="text-xs text-gray-600">Fecha de creación</label>
+              <input
+                type="date"
+                value={dt}
+                onChange={(e) => setItemDate(it.id, e.target.value)}
+                className="rounded-lg border p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
               <button
-                onClick={() => handleEvaluate(it)}
-                className="text-xs px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                onClick={() => setItemDate(it.id, new Date().toISOString().slice(0, 10))}
+                className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
               >
-                📋 Evaluar
-              </button>
-              <button
-                onClick={() => setItemStatus(it.id, "total")}
-                className={`text-xs px-3 py-2 rounded-lg border transition ${
-                  st === "total"
-                    ? "bg-green-600 border-green-600 text-white"
-                    : "bg-white border-gray-300 text-green-700 hover:bg-green-50"
-                }`}
-              >
-                Cumplimiento total
-              </button>
-              <button
-                onClick={() => setItemStatus(it.id, "proceso")}
-                className={`text-xs px-3 py-2 rounded-lg border transition ${
-                  st === "proceso"
-                    ? "bg-yellow-500 border-yellow-500 text-white"
-                    : "bg-white border-gray-300 text-yellow-700 hover:bg-yellow-50"
-                }`}
-              >
-                En proceso
+                Hoy
               </button>
             </div>
 
-            {/* Fecha y notas */}
-            <div className="mt-3 grid grid-cols-1 gap-2">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-600">Fecha evaluación:</label>
-                <input
-                  type="date"
-                  value={dt}
-                  onChange={(e) => setItemDate(it.id, e.target.value)}
-                  className="rounded-lg border p-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <button
-                  onClick={() => setItemDate(it.id, new Date().toISOString().slice(0, 10))}
-                  className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
-                >
-                  Hoy
-                </button>
-              </div>
-
+            {/* Notas */}
+            <div className="mt-2 flex items-center gap-3">
               <button
                 onClick={() => setOpenNote((v) => !v)}
-                className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 w-fit"
+                className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
               >
                 {openNote ? "Ocultar nota" : n ? "Editar nota" : "Añadir nota"}
               </button>
-              
-              {openNote && (
-                <textarea
-                  value={n}
-                  onChange={(e) => setItemNote(it.id, e.target.value)}
-                  placeholder="Observaciones, evidencia, plan de acción…"
-                  className="w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                />
-              )}
             </div>
+            {openNote && (
+              <textarea
+                value={n}
+                onChange={(e) => setItemNote(it.id, e.target.value)}
+                placeholder="Observaciones, evidencia, plan de acción…"
+                className="mt-2 w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={3}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -565,7 +532,7 @@ export default function LabComplianceDashboard() {
 
   // Agrupa ítems filtrados por sección
   const grouped = useMemo(() => {
-    const bySection: Record<string, { section: Section; items: any[] }> = {};
+    const bySection: Record<string, { section: Section; items: ChecklistItem[] }> = {};
     for (const s of sections) bySection[s.id] = { section: s, items: [] };
     for (const it of filtered) (bySection as any)[(it as any).sectionId].items.push(it);
     return Object.values(bySection).filter((g) => g.items.length > 0);
@@ -584,10 +551,15 @@ export default function LabComplianceDashboard() {
             <span className="i">☰</span>
           </button>
           <div className="flex items-center gap-2">
-            <LogoBeakerShield initials="LC" color="#2563eb" size={36} />
-            <div>
-              <div className="font-semibold leading-4">Cumplimiento de Laboratorio</div>
-              <div className="text-xs text-gray-600">Sistema de Evaluación Completo</div>
+            {/* LOGO */}
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
+                LC
+              </div>
+              <div>
+                <div className="font-semibold leading-4">Cumplimiento de Laboratorio</div>
+                <div className="text-xs text-gray-600">Sistema de evaluación</div>
+              </div>
             </div>
           </div>
           <div className="ml-auto hidden md:flex items-center gap-2">
@@ -603,20 +575,20 @@ export default function LabComplianceDashboard() {
       </header>
 
       {/* Contenido */}
-      <div className="max-w-6xl mx-auto px-4 py-4 md:py-6 grid md:grid-cols-[300px_1fr] gap-4">
-        {/* Sidebar (desktop) MEJORADO */}
+      <div className="max-w-6xl mx-auto px-4 py-4 md:py-6 grid md:grid-cols-[260px_1fr] gap-4">
+        {/* Sidebar (desktop) */}
         <aside className="hidden md:block sticky top-[64px] h-[calc(100vh-80px)] overflow-auto p-2 rounded-2xl border bg-white/70">
           <Sidebar sections={sections} totals={totals} onAddItem={addCustomItem} />
         </aside>
 
         {/* Panel principal */}
         <main>
-          {/* Controles rápidos MEJORADOS */}
-          <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="rounded-2xl border bg-white/70 p-4">
-              <div className="text-xs text-gray-500">Cumplimiento Total</div>
+          {/* Controles rápidos */}
+          <div className="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="rounded-2xl border bg-white/70 p-3">
+              <div className="text-xs text-gray-500">Cumplimiento</div>
               <div className="mt-2 flex items-center gap-3">
-                <div className="relative h-14 w-14">
+                <div className="relative h-12 w-12">
                   <div
                     className="absolute inset-0 rounded-full"
                     style={{
@@ -629,65 +601,29 @@ export default function LabComplianceDashboard() {
                 </div>
                 <div>
                   <div className="text-sm font-semibold">{totals.done} / {totals.total} ítems</div>
-                  <div className="text-xs text-gray-500">Completados</div>
+                  <div className="text-xs text-gray-500">En "Cumplimiento total"</div>
                 </div>
               </div>
             </div>
-
-            <div className="rounded-2xl border bg-white/70 p-4">
-              <div className="text-xs text-gray-500">Calificación Promedio</div>
-              <div className="mt-2 flex items-center gap-3">
-                <div className="relative h-14 w-14">
-                  <div
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: `conic-gradient(#10b981 ${totals.averageScore * 3.6}deg, #e5e7eb 0deg)`,
-                    }}
-                  />
-                  <div className="absolute inset-1 rounded-full bg-white grid place-items-center text-sm font-semibold">
-                    {totals.averageScore}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold">{totals.totalScore} / {totals.maxPossibleScore} pts</div>
-                  <div className="text-xs text-gray-500">Puntuación total</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border bg-white/70 p-4">
-              <div className="text-xs text-gray-500">Estado General</div>
-              <div className="mt-2 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-600">✓ Completados:</span>
-                  <span>{totals.done}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-yellow-600">🔄 En proceso:</span>
-                  <span>{totals.inProgress}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-red-600">⏳ Pendientes:</span>
-                  <span>{totals.pending}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border bg-white/70 p-4">
-              <div className="text-xs text-gray-500">Búsqueda y Filtros</div>
+            <div className="rounded-2xl border bg-white/70 p-3">
+              <div className="text-xs text-gray-500">Búsqueda</div>
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar ítems..."
+                placeholder="Buscar por ítem, sección o referencia…"
                 className="mt-2 w-full rounded-xl border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+            <div className="rounded-2xl border bg-white/70 p-3">
+              <div className="text-xs text-gray-500">Autoevaluación</div>
               <div className="mt-2 flex items-center justify-between">
-                <div className="text-sm">Solo pendientes</div>
+                <div className="text-sm">Mostrar solo pendientes</div>
                 <button
                   onClick={() => setShowOnlyPending((v) => !v)}
                   className={`h-7 w-12 rounded-full relative transition ${
                     showOnlyPending ? "bg-blue-600" : "bg-gray-300"
                   }`}
+                  aria-pressed={showOnlyPending}
                 >
                   <span
                     className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
@@ -699,10 +635,16 @@ export default function LabComplianceDashboard() {
             </div>
           </div>
 
+          {/* Leyenda rápida */}
+          <div className="mb-2 text-[12px] text-gray-600">
+            <span className="inline-flex items-center gap-1 mr-4"><span className="h-3 w-3 rounded-full bg-blue-600 inline-block"></span> Cumplimiento total</span>
+            <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded-full bg-amber-400 inline-block"></span> En proceso</span>
+          </div>
+
           {/* Listado agrupado */}
           {grouped.map(({ section, items }) => (
             <section id={section.id} key={section.id} className="mb-6">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-bold text-blue-800">{section.title}</h2>
                 <button
                   onClick={() => addCustomItem(section.id)}
@@ -732,16 +674,6 @@ export default function LabComplianceDashboard() {
         </main>
       </div>
 
-      {/* Modal de evaluación */}
-      {evaluationModal.isOpen && evaluationModal.item && (
-        <EvaluationModal
-          item={evaluationModal.item}
-          isOpen={evaluationModal.isOpen}
-          onClose={() => setEvaluationModal({ isOpen: false, item: null })}
-          onSave={(score, notes, status) => handleSaveEvaluation(evaluationModal.item!.id, score, notes, status)}
-        />
-      )}
-
       {/* Sidebar móvil */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 md:hidden" aria-modal="true" role="dialog">
@@ -769,7 +701,7 @@ export default function LabComplianceDashboard() {
   );
 }
 
-// ----- Sidebar component MEJORADO -----
+// ----- Sidebar component -----
 function Sidebar({
   sections,
   totals,
@@ -777,14 +709,14 @@ function Sidebar({
   onNavigate,
 }: {
   sections: Section[];
-  totals: { total: number; done: number; pct: number; averageScore: number; inProgress: number; pending: number; criticalItems: number };
+  totals: { total: number; done: number; pct: number };
   onAddItem: (sectionId: string) => void;
   onNavigate?: () => void;
 }) {
   return (
     <nav>
       <div className="rounded-2xl p-4 bg-blue-600 text-white mb-3">
-        <div className="text-xs uppercase tracking-wide opacity-90">Progreso General</div>
+        <div className="text-xs uppercase tracking-wide opacity-90">Progreso</div>
         <div className="flex items-center gap-3 mt-2">
           <div className="relative h-12 w-12">
             <div
@@ -795,28 +727,9 @@ function Sidebar({
               {totals.pct}%
             </div>
           </div>
-          <div className="text-sm">
-            <div><span className="font-semibold">{totals.done}</span> / {totals.total} completados</div>
-            <div className="text-xs opacity-90">Calificación: {totals.averageScore}%</div>
-          </div>
-        </div>
-        
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-          <div className="bg-green-500/30 rounded p-1">
-            <div className="font-semibold">{totals.done}</div>
-            <div>Completados</div>
-          </div>
-          <div className="bg-yellow-500/30 rounded p-1">
-            <div className="font-semibold">{totals.inProgress}</div>
-            <div>En proceso</div>
-          </div>
-          <div className="bg-red-500/30 rounded p-1">
-            <div className="font-semibold">{totals.pending}</div>
-            <div>Pendientes</div>
-          </div>
+          <div className="text-sm"><span className="font-semibold">{totals.done}</span> / {totals.total} en cumplimiento total</div>
         </div>
       </div>
-      
       <ul>
         {sections.map((s) => (
           <li key={s.id} className="mb-1">
@@ -826,37 +739,20 @@ function Sidebar({
               className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-blue-50"
             >
               <span className="text-sm font-medium text-blue-900">{s.title}</span>
-              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                {s.items.length}
-              </span>
+              <button
+                onClick={(e) => { e.preventDefault(); onAddItem(s.id); }}
+                className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
+                aria-label={`Añadir ítem a ${s.title}`}
+              >
+                +
+              </button>
             </a>
           </li>
         ))}
       </ul>
-      
-      <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-        <div className="text-sm font-semibold text-yellow-800">Items Críticos</div>
-        <div className="text-2xl font-bold text-yellow-600 mt-1">{totals.criticalItems}</div>
-        <div className="text-xs text-yellow-700">Requieren atención inmediata</div>
-      </div>
-
       <div className="mt-3 text-[11px] text-gray-500">
-        <p>Consejo: Usa el sistema de evaluación para calificar cada item y hacer seguimiento detallado.</p>
+        <p>Consejo: registra la fecha de creación al iniciar un punto y usa "En proceso" hasta completarlo.</p>
       </div>
     </nav>
   );
 }
-
-// Datos iniciales (con maxScore agregado)
-const initialSections: Section[] = [
-  {
-    id: "docs",
-    title: "Documentos y Manuales",
-    items: [
-      { id: "manual-organizacion", label: "Manual de Organización", ref: "Ref. 5.5.1", maxScore: 10 },
-      { id: "manual-proc-admin", label: "Manual de Procedimientos Administrativos", ref: "Ref. 5.5.2", maxScore: 10 },
-      // ... (agregar maxScore: 10 a todos los items existentes)
-    ],
-  },
-  // ... (todas las demás secciones)
-];
