@@ -1,758 +1,1216 @@
-import React, { useEffect, useMemo, useState } from "react";
-
-/**
- * Lab Compliance Mobile Dashboard
- * - Checklist con estado (Cumplimiento total | En proceso) + Fecha de creación + Notas
- * - Descripciones normativas (ayuda contextual por ítem)
- * - Persistencia local (localStorage)
- * - Exportar/Importar JSON y Exportar a PDF
- */
-
-// ===== Tipos =====
-type ChecklistItem = {
-  id: string;
-  label: string;
-  ref?: string;
-  notes?: string;
-};
-
-type Section = {
-  id: string;
-  title: string;
-  items: ChecklistItem[];
-};
-
-type Status = "total" | "proceso"; // total = Cumplimiento total; proceso = En proceso
-
-const STORAGE_KEY = "labComplianceApp_v3";
-
-// Utilidad para crear IDs a partir del texto
-const slug = (s: string) =>
-  s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-
-// ----- Descripciones normativas -----
-const DESCS: Record<string, string> = {
-  // Documentos y Manuales
-  "manual-organizacion": `¿Qué es? Define la estructura y filosofía del laboratorio.\nContenido mínimo: índice; introducción; misión y visión; organigrama con líneas de autoridad; objetivo del manual; **descripción de puestos y funciones** (p. ej. Responsable Sanitario, Químico Analista, Técnico, Recepción); perfiles y requisitos; firmas.\nEvidencia de cumplimiento: organigrama vigente, descripciones firmadas, actualización controlada de versión.`,
-  "manual-proc-admin": `¿Qué es? Conjunto de **procedimientos no analíticos**.\nIncluye: recepción/registro de pacientes, **toma y recepción de muestras**, solicitud de estudios, entrega de resultados, compras e inventarios, atención a usuarios.\nAnexos: **diagramas de flujo** y **formatos** (solicitudes, etiquetas, recibos).`,
-  "pnos-metodos": `¿Qué es? **PNO por cada prueba** que realiza el laboratorio.\nContenido: nombre del método; **fundamento**; preparación (reactivos/controles/calibradores); **procedimiento paso a paso**; criterios de aceptación; cálculo y reporte de resultados; **valores de referencia**; seguridad; **bibliografía** (insertos del fabricante).`,
-  "manual-muestras": `¿Qué es? Guía de **toma, identificación, conservación y transporte**.\nIncluye: preparación del paciente; materiales/contendedores; **criterios de aceptación/rechazo**; tiempos máximos; temperatura y conservación; bioseguridad; cadena de custodia; instrucciones por prueba.`,
-  "manual-equipo": `¿Qué es? **Manual por equipo**.\nContenido: identificación (marca/modelo); **uso** (encendido, operación, apagado); **cuidados**; **mantenimiento preventivo** del usuario; referencias al **manual del fabricante**.`,
-  "manual-bioseguridad": `¿Qué es? Políticas y prácticas para proteger al personal y ambiente.\nContenido: **identificación de riesgos** (químicos, biológicos, físicos); **EPP** por actividad; señalización; manejo de derrames y accidentes; exposición ocupacional; ubicación de **extintores, regaderas, lavaojos**; **plan de manejo de RPBI**.`,
-
-  // Programas
-  "prog-mantenimiento": `Programa anual de **mantenimiento preventivo**.\nIncluye: calendario por equipo; periodicidad (mensual/trimestral/semestral/anual); responsable; proveedor; **registros/bitácoras**.`,
-  "prog-ci": `Control **interno** diario de calidad.\nIncluye: controles por analito/lote; **gráficas Levey–Jennings**; **reglas de Westgard**; acciones correctivas; evidencia firmada.`,
-  "prog-peec": `Participación en **evaluación externa** (p. ej., PACAL).\nDebes conservar: contrato; **informes PEEC**; revisión y **firma del responsable**; **investigación de no conformidades** y acciones correctivas.`,
-  "prog-desinfeccion": `Programa de **desinfección y control de plagas**.\nIncluye: productos autorizados; frecuencias; áreas cubiertas; responsable; **bitácoras** y certificados del proveedor.`,
-  "prog-capacitacion": `Programa **anual de capacitación**.\nIncluye: plan temático (bioseguridad, PNO, equipos, calidad); calendario; listas de asistencia; **evaluación de competencias**; constancias.`,
-
-  // Bitácoras y registros
-  "bitacora-mant-cal": `Registro de **mantenimientos y calibraciones** por equipo.\nDebe incluir: fecha, actividad, proveedor/realizador, resultados, próxima fecha.`,
-  "bitacora-temperatura": `Registro diario de **temperaturas** (refrigeradores, congeladores, incubadoras).\nIncluye: valores, rango aceptable, **acciones** cuando hay desviaciones.`,
-  "registros-ci": `Evidencia del **control interno**: valores de control, gráficos, interpretación, **acciones correctivas**.`,
-
-  // Áreas e infraestructura
-  "recepcion-sala": `**Recepción y sala** separadas de áreas técnicas; control de flujo de pacientes y muestras.`,
-  "toma-muestras": `Área de **toma** con privacidad; silla con descansabrazo; contenedor rígido para punzocortantes; insumos a la mano; higiene.`,
-  "areas-proceso": `Separación/barrera entre **actividades incompatibles** (p. ej., microbiología vs. química); flujo unidireccional.`,
-  "lavado-esteril": `**Lavado y esterilización** físicamente separados del análisis; procedimientos y soluciones validadas.`,
-  "almacen-reactivos": `Almacén **seco, ventilado, controlado**; FEFO/PEPS; control de caducidades; hojas de seguridad (SDS).`,
-  "almacen-rpbi": `Almacén **temporal de RPBI** techado, ventilado, señalizado; acceso restringido; segregación por tipo.`,
-
-  // Bioseguridad – Campana
-  "bsc-clase2": `**Campana de Bioseguridad Clase II** para actividades de microbiología que lo requieran.`,
-  "bsc-cert": `**Certificación anual** de flujo y filtros HEPA por personal calificado; etiquetar con fecha/vencimiento.`,
-  "bsc-ubicacion": `Ubicar lejos de **corrientes de aire** (puertas/ventanas/aires) y tránsito; nivelación adecuada.`,
-  "bsc-operacion": `Operación segura: **purgado**, trabajo dentro de la zona segura, mantener rejillas despejadas, limpieza antes/después.`,
-
-  // Subcontratación
-  "contrato-ref": `**Contrato** con laboratorio de referencia (responsabilidad mancomunada).`,
-  "listado-pruebas": `Listado de **pruebas subcontratadas** con **TAT** y condiciones.`,
-  "cond-transporte": `Condiciones de **transporte y conservación** de muestras; embalaje adecuado; tiempos máximos.`,
-  "confidencialidad": `Cláusulas de **confidencialidad** y protección de datos personales.`,
-  "evidencias-legales": `Evidencia de **Aviso/Licencia** del laboratorio de referencia y su alcance.`,
-
-  // Aseguramiento de la calidad
-  "proc-nc-peec": `**Procedimiento** para investigar **no conformidades** (internas/PEEC): causa raíz, acciones correctivas/preventivas.`,
-  "bitacora-nc": `**Bitácora** con folio, hallazgo, análisis de causa, acción, verificación y cierre.`,
-  "verif-eficacia": `Comprobar la **eficacia** de las acciones (revisión posterior, indicadores).`,
-
-  // Higiene y bioseguridad
-  "epp-registros": `Dotación y **registro** de EPP por empleado (tallas, fechas, reposición).`,
-  "senializacion": `**Señalización** de riesgos y EPP obligatorio por área.`,
-  "procedimientos-epp": `Procedimientos que especifican **EPP por actividad** (toma, micro, químicos, limpieza).`,
-  "supervision": `Rondas con **checklist** y registros de correcciones.`,
-  "induccion": `**Inducción** de bioseguridad para personal nuevo y evaluaciones periódicas.`,
-
-  // RPBI
-  "clasificacion": `**Clasificación/segregación** en el punto de generación: biológico-infeccioso, punzocortante, etc.`,
-  "contrato-recolector": `**Contrato** vigente con **recolector autorizado** y manifiestos firmados.`,
-  "manifiestos": `Archivo de **manifiestos** ≥ 5 años; trazabilidad completa.`,
-  "contenedores": `Uso de **contenedores** adecuados: rígidos para punzocortantes; bolsas de color y calibre normado.`,
-
-  // Recursos humanos
-  "expedientes-rh": `**Expediente por empleado**: CV, identificación, títulos/cédulas o diplomas, constancias.`,
-  "descripcion-puesto": `**Descripción de puesto** firmada: funciones, responsabilidades y autoridad.`,
-  "constancias-cap": `**Constancias** de capacitación y evaluaciones integradas al expediente.`,
-  "eval-competencias": `Programa y registros de **evaluación de competencias** por puesto/proceso.`,
-
-  // Insumos
-  "proc-recepcion": `Procedimiento de **recepción**: verificación, registro, cuarentena si aplica.`,
-  "checklist-recepcion": `**Checklist**: correspondencia con pedido, caducidad, **registro sanitario**, integridad, condiciones de transporte.`,
-  "peps-etiquetado": `**PEPS/FEFO** y **etiquetado** de recepción y **apertura**; control de caducidades.`,
-
-  // SGC
-  "revision-direccion": `**Revisión por la Dirección** anual: objetivos, desempeño de calidad, recursos y mejoras.`,
-  "control-docs": `**Control de documentos** y versiones: responsables, historial de cambios, copias controladas.`,
-  "auditoria-interna": `**Auditorías internas** planificadas con informes y seguimientos.`,
-
-  // Verificación sanitaria
-  "carpeta-verificacion": `Carpeta con **Avisos/Licencias**, RPBI, PEEC, mantenimientos, control de plagas, bitácoras clave.`,
-  "capacitacion-personal": `El personal **sabe explicar** su función y **ubicar** manuales/PNO; simulacros de preguntas.`,
-  "recorrido-visual": `Recorrido crítico: orden/limpieza, **identificación**, bioseguridad, seguridad. Correcciones evidenciadas.`,
-
-  // Trazabilidad
-  "solicitud": `**Solicitud** completa, única por paciente/muestra; requisitos obligatorios.`,
-  "etiquetado": `**Etiquetado frente al paciente** con ≥ 2 identificadores.`,
-  "registro-lis": `**Registro cronológico** (folio) en bitácora/LIS que vincule todo el flujo.`,
-  "informe": `**Informe** con contenidos obligatorios (unidades metrológicas, firma y datos del responsable).`,
-
-  // Verificación/validación de métodos
-  "precision": `**Precisión**: repetibilidad/reproducibilidad documentadas.`,
-  "exactitud": `**Exactitud**: comparación contra valor verdadero/material de referencia.`,
-  "rango": `**Rango reportable** verificado.`,
-  "valores-ref": `**Valores de referencia** validados para la población atendida.`,
-  "carpeta-verif": `Carpeta firmada por **Responsable Sanitario** con el estudio de verificación/validación.`,
-
-  // Quejas
-  "proc-quejas": `Procedimiento para **quejas y reclamaciones**: recepción, investigación, respuesta y cierre.`,
-  "bitacora-quejas": `**Bitácora central** con acciones correctivas/preventivas y trazabilidad de atención.`,
-};
-
-// ----- Datos base -----
-const initialSections: Section[] = [
-  {
-    id: "docs",
-    title: "Documentos y Manuales",
-    items: [
-      { id: "manual-organizacion", label: "Manual de Organización", ref: "Ref. 5.5.1" },
-      { id: "manual-proc-admin", label: "Manual de Procedimientos Administrativos", ref: "Ref. 5.5.2" },
-      { id: "pnos-metodos", label: "PNO por cada método analítico (catálogo de pruebas)", ref: "Ref. 5.5.3" },
-      { id: "manual-muestras", label: "Manual de toma, identificación, conservación y transporte de muestras", ref: "Ref. 5.5.5" },
-      { id: "manual-equipo", label: "Manual de manejo de equipo por cada equipo", ref: "Ref. 5.5.6" },
-      { id: "manual-bioseguridad", label: "Manual de seguridad e higiene (y radiológica si aplica)", ref: "Ref. 5.5.7" },
-    ],
-  },
-  {
-    id: "programas",
-    title: "Programas",
-    items: [
-      { id: "prog-mantenimiento", label: "Programa de mantenimiento preventivo anualizado", ref: "Ref. 5.5.9" },
-      { id: "prog-ci", label: "Programa de control interno de la calidad (reglas de Westgard, LJ)", ref: "Ref. 7.1" },
-      { id: "prog-peec", label: "Programa de evaluación externa de la calidad (PEEC/PACAL)", ref: "Ref. 7.2" },
-      { id: "prog-desinfeccion", label: "Programa de desinfección y desinfestación (incluye control de plagas)", ref: "Ref. 5.5.10" },
-      { id: "prog-capacitacion", label: "Programa anual de capacitación (bioseguridad, PNOs, equipos)", ref: "Capacitación" },
-    ],
-  },
-  {
-    id: "bitacoras",
-    title: "Bitácoras y Registros",
-    items: [
-      { id: "bitacora-mant-cal", label: "Bitácora de mantenimiento y calibración de equipo", ref: "Ref. 5.5.4" },
-      { id: "bitacora-temperatura", label: "Bitácora de control de temperatura (refrigeradores, incubadoras, etc.)" },
-      { id: "registros-ci", label: "Registros de control interno (resultados, LJ, acciones correctivas)" },
-    ],
-  },
-  {
-    id: "areas",
-    title: "Áreas e Infraestructura",
-    items: [
-      { id: "recepcion-sala", label: "Recepción y sala de espera separadas de áreas de proceso", ref: "Ref. 5.2.1" },
-      { id: "toma-muestras", label: "Área de toma de muestras con privacidad y mobiliario adecuado", ref: "Ref. 5.2.2-5.2.3" },
-      { id: "areas-proceso", label: "Secciones analíticas; barrera física entre actividades incompatibles", ref: "Ref. 5.2.4" },
-      { id: "lavado-esteril", label: "Lavado y esterilización separadas de análisis", ref: "Ref. 5.2.5" },
-      { id: "almacen-reactivos", label: "Almacén de reactivos/materiales (seco, ventilado, temperatura controlada)", ref: "Ref. 5.2.6" },
-      { id: "almacen-rpbi", label: "Almacén temporal de RPBI (separado, techado y señalizado)", ref: "Ref. 5.2.7" },
-    ],
-  },
-  {
-    id: "bsc",
-    title: "Bioseguridad – Campana",
-    items: [
-      { id: "bsc-clase2", label: "Campana de Bioseguridad Clase II para microbiología de rutina", ref: "Recomendación" },
-      { id: "bsc-cert", label: "Certificación anual de flujos y HEPA por personal calificado" },
-      { id: "bsc-ubicacion", label: "Ubicación libre de corrientes (puertas/ventanas/aires)" },
-      { id: "bsc-operacion", label: "Capacitación en operación segura (purgado, rejillas, zona de trabajo)" },
-    ],
-  },
-  {
-    id: "subcontratacion",
-    title: "Servicios de Referencia/Subcontratación",
-    items: [
-      { id: "contrato-ref", label: "Contrato vigente con laboratorio de referencia (responsabilidad mancomunada)", ref: "Ref. 6.2" },
-      { id: "listado-pruebas", label: "Listado de pruebas subcontratadas y tiempos de entrega" },
-      { id: "cond-transporte", label: "Condiciones de transporte y manejo de muestras" },
-      { id: "confidencialidad", label: "Cláusulas de confidencialidad y protección de datos" },
-      { id: "evidencias-legales", label: "Evidencia de Aviso/Licencia del laboratorio de referencia" },
-    ],
-  },
-  {
-    id: "aseguramiento",
-    title: "Aseguramiento de la Calidad",
-    items: [
-      { id: "proc-nc-peec", label: "Procedimiento de investigación de no conformidades (PEEC)" },
-      { id: "bitacora-nc", label: "Bitácora de NC con causa raíz, acciones correctivas y preventivas" },
-      { id: "verif-eficacia", label: "Verificación de eficacia de acciones correctivas" },
-    ],
-  },
-  {
-    id: "higiene",
-    title: "Higiene y Bioseguridad",
-    items: [
-      { id: "epp-registros", label: "Dotación y registro de EPP por empleado" },
-      { id: "senializacion", label: "Señalización de riesgos y EPP obligatorio" },
-      { id: "procedimientos-epp", label: "Procedimientos escritos que especifiquen EPP por actividad" },
-      { id: "supervision", label: "Supervisión y rondas con checklist de cumplimiento" },
-      { id: "induccion", label: "Inducción y capacitación de bioseguridad a personal nuevo" },
-    ],
-  },
-  {
-    id: "rpbi",
-    title: "RPBI",
-    items: [
-      { id: "clasificacion", label: "Clasificación y segregación correcta en el punto de generación" },
-      { id: "contrato-recolector", label: "Contrato vigente con recolector autorizado" },
-      { id: "manifiestos", label: "Manifiestos de recolección archivados (≥ 5 años)" },
-      { id: "contenedores", label: "Contenedores/bolsas adecuados (punzocortantes rígidos, colores)" },
-    ],
-  },
-  {
-    id: "rh",
-    title: "Recursos Humanos",
-    items: [
-      { id: "expedientes-rh", label: "Expediente por empleado (CV, ID, títulos/cédulas, diplomas)" },
-      { id: "descripcion-puesto", label: "Descripciones de puesto firmadas (funciones/responsabilidades)" },
-      { id: "constancias-cap", label: "Constancias de capacitación en expediente" },
-      { id: "eval-competencias", label: "Programa y registros de evaluación de competencias" },
-    ],
-  },
-  {
-    id: "insumos",
-    title: "Recepción y Control de Insumos",
-    items: [
-      { id: "proc-recepcion", label: "Procedimiento de recepción de insumos" },
-      { id: "checklist-recepcion", label: "Checklist: correspondencia, caducidad, registro sanitario, integridad, transporte" },
-      { id: "peps-etiquetado", label: "PEPS y etiquetado: fecha de recepción y apertura" },
-    ],
-  },
-  {
-    id: "sgc",
-    title: "Sistema de Gestión de la Calidad (SGC)",
-    items: [
-      { id: "revision-direccion", label: "Revisión anual por la dirección (objetivos, mejoras)" },
-      { id: "control-docs", label: "Control de documentos y versiones (historial de cambios)" },
-      { id: "auditoria-interna", label: "Auditorías internas periódicas" },
-    ],
-  },
-  {
-    id: "verificacion",
-    title: "Preparación Visita de Verificación",
-    items: [
-      { id: "carpeta-verificacion", label: "Carpeta con: Avisos/Licencia, RPBI, PEEC, mantenimientos, plagas, etc." },
-      { id: "capacitacion-personal", label: "Personal entrenado para explicar funciones y ubicar manuales/PNOs" },
-      { id: "recorrido-visual", label: "Recorrido crítico: orden/limpieza, identificación, bioseguridad, seguridad" },
-    ],
-  },
-  {
-    id: "trazabilidad",
-    title: "Trazabilidad del Paciente y la Muestra",
-    items: [
-      { id: "solicitud", label: "Solicitud completa y vinculada de forma única al paciente/muestra" },
-      { id: "etiquetado", label: "Etiquetado frente al paciente con ≥ 2 identificadores (p. ej., nombre + fecha nac.)" },
-      { id: "registro-lis", label: "Registro cronológico (folio) en bitácora/LIS que vincule todo el flujo" },
-      { id: "informe", label: "Informe de resultados con contenidos obligatorios (unidades NOM-008, firma, etc.)" },
-    ],
-  },
-  {
-    id: "verif-metodos",
-    title: "Verificación/Validación de Métodos",
-    items: [
-      { id: "precision", label: "Verificación de precisión (repetibilidad/reproducibilidad)" },
-      { id: "exactitud", label: "Verificación de exactitud (contra valor verdadero)" },
-      { id: "rango", label: "Rango reportable verificado" },
-      { id: "valores-ref", label: "Valores de referencia validados/aplicables a la población" },
-      { id: "carpeta-verif", label: "Carpeta de verificación/validación firmada por el Responsable Sanitario" },
-    ],
-  },
-  {
-    id: "quejas",
-    title: "Quejas, Reclamaciones y NC del Servicio",
-    items: [
-      { id: "proc-quejas", label: "Procedimiento formal de gestión de quejas (recepción, investigación, resolución)" },
-      { id: "bitacora-quejas", label: "Bitácora central con acciones correctivas y preventivas" },
-    ],
-  },
-];
-
-// ===== Componente Principal =====
-export default function LabComplianceDashboard() {
-  const [sections, setSections] = useState<Section[]>(initialSections);
-  const [status, setStatus] = useState<Record<string, Status | undefined>>({});
-  const [createdAt, setCreatedAt] = useState<Record<string, string>>({});
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [query, setQuery] = useState("");
-  const [showOnlyPending, setShowOnlyPending] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Cargar del almacenamiento local
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.sections) setSections(parsed.sections);
-        if (parsed.status) setStatus(parsed.status);
-        if (parsed.createdAt) setCreatedAt(parsed.createdAt);
-        if (parsed.notes) setNotes(parsed.notes);
-      }
-    } catch {}
-  }, []);
-
-  // Guardar en almacenamiento local
-  useEffect(() => {
-    const payload = { sections, status, createdAt, notes };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [sections, status, createdAt, notes]);
-
-  // Lista plana de todos los ítems
-  const allItems = useMemo(
-    () =>
-      sections.flatMap((sec) =>
-        sec.items.map((it) => ({ ...it, sectionId: sec.id, sectionTitle: sec.title }))
-      ),
-    [sections]
-  );
-
-  // Filtro por búsqueda y pendientes
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return allItems.filter((it) => {
-      if (showOnlyPending && status[it.id] === "total") return false;
-      if (!q) return true;
-      return (
-        it.label.toLowerCase().includes(q) ||
-        (it.ref || "").toLowerCase().includes(q) ||
-        (it.sectionTitle || "").toLowerCase().includes(q)
-      );
-    });
-  }, [allItems, status, query, showOnlyPending]);
-
-  // Cálculos de progreso
-  const totals = useMemo(() => {
-    const total = allItems.length;
-    const done = allItems.reduce((acc, it) => acc + (status[it.id] === "total" ? 1 : 0), 0);
-    const pct = total ? Math.round((done / total) * 100) : 0;
-    return { total, done, pct };
-  }, [allItems, status]);
-
-  // Acciones
-  const setItemStatus = (id: string, value: Status) => {
-    setStatus((prev) => ({ ...prev, [id]: value }));
-    setCreatedAt((prev) => ({ ...prev, [id]: prev[id] || new Date().toISOString().slice(0, 10) }));
-  };
-
-  const setItemDate = (id: string, value: string) => {
-    setCreatedAt((prev) => ({ ...prev, [id]: value }));
-  };
-
-  const setItemNote = (id: string, value: string) => {
-    setNotes((prev) => ({ ...prev, [id]: value }));
-  };
-
-  const addCustomItem = (sectionId: string) => {
-    const label = prompt("Describe el nuevo punto de verificación (ítem)");
-    if (!label) return;
-    setSections((prev) =>
-      prev.map((s) => {
-        if (s.id !== sectionId) return s;
-        const id = slug(`${sectionId}-${label}`).slice(0, 64);
-        return { ...s, items: [...s.items, { id, label }] };
-      })
-    );
-  };
-
-  const exportJSON = () => {
-    const payload = { sections, status, createdAt, notes, exportedAt: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `cumplimiento-lab-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const importJSON = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || "{}"));
-        if (parsed.sections) setSections(parsed.sections);
-        if (parsed.status) setStatus(parsed.status);
-        if (parsed.createdAt) setCreatedAt(parsed.createdAt);
-        if (parsed.notes) setNotes(parsed.notes);
-        alert("Datos importados correctamente.");
-      } catch (e) {
-        alert("Archivo no válido.");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const resetAll = () => {
-    if (!confirm("¿Restablecer todo a valores iniciales? Esto borrará tu progreso.")) return;
-    setSections(initialSections);
-    setStatus({});
-    setCreatedAt({});
-    setNotes({});
-    localStorage.removeItem(STORAGE_KEY);
-  };
-
-  // Render de un ítem
-  const ItemRow: React.FC<{ it: ChecklistItem }> = ({ it }) => {
-    const st = status[it.id];
-    const dt = createdAt[it.id] || "";
-    const n = notes[it.id] || "";
-    const [openNote, setOpenNote] = useState(false);
-    const [openInfo, setOpenInfo] = useState(false);
-
-    const badge = (
-      <div className="flex items-center gap-2 mt-2">
-        <button
-          onClick={() => setItemStatus(it.id, "total")}
-          className={`text-xs px-2 py-1 rounded-lg border transition ${
-            st === "total"
-              ? "bg-blue-600 border-blue-600 text-white"
-              : "bg-white border-gray-300 text-blue-700 hover:bg-blue-50"
-          }`}
-        >
-          Cumplimiento total
-        </button>
-        <button
-          onClick={() => setItemStatus(it.id, "proceso")}
-          className={`text-xs px-2 py-1 rounded-lg border transition ${
-            st === "proceso"
-              ? "bg-amber-500 border-amber-500 text-white"
-              : "bg-white border-gray-300 text-amber-700 hover:bg-amber-50"
-          }`}
-        >
-          En proceso
-        </button>
-      </div>
-    );
-
-    return (
-      <div className={`w-full rounded-xl border p-3 mb-2 bg-white/80 shadow-sm ${st === "total" ? "opacity-85" : ""}`}>
-        <div className="flex items-start gap-3">
-          {/* Indicador circular pequeño según estado */}
-          <div
-            className={`mt-1.5 h-4 w-4 rounded-full border ${
-              st === "total" ? "bg-blue-600 border-blue-600" : st === "proceso" ? "bg-amber-400 border-amber-400" : "bg-white border-gray-300"
-            }`}
-            aria-hidden
-          />
-          <div className="flex-1">
-            <div className="text-sm md:text-base font-medium text-gray-900">{it.label}</div>
-            {it.ref && <div className="text-xs text-gray-500 mt-0.5">{it.ref}</div>}
-
-            {/* Botón de ayuda */}
-            <div className="mt-1">
-              <button
-                onClick={() => setOpenInfo((v) => !v)}
-                className="text-xs px-2 py-1 rounded-lg bg-white border hover:bg-blue-50"
-                aria-expanded={openInfo}
-              >
-                {openInfo ? "Ocultar: ¿Qué significa?" : "¿Qué significa y cómo cumplir?"}
-              </button>
-            </div>
-            {openInfo && (
-              <div className="mt-2 text-xs leading-5 bg-blue-50/60 border border-blue-100 rounded-lg p-2 whitespace-pre-wrap">
-                {DESCS[it.id] || "Guía: especifica propósito, contenido mínimo y evidencia esperada."}
-              </div>
-            )}
-
-            {badge}
-
-            {/* Fecha de creación */}
-            <div className="mt-2 grid grid-cols-[max-content_1fr_max-content] items-center gap-2">
-              <label className="text-xs text-gray-600">Fecha de creación</label>
-              <input
-                type="date"
-                value={dt}
-                onChange={(e) => setItemDate(it.id, e.target.value)}
-                className="rounded-lg border p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                onClick={() => setItemDate(it.id, new Date().toISOString().slice(0, 10))}
-                className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
-              >
-                Hoy
-              </button>
-            </div>
-
-            {/* Notas */}
-            <div className="mt-2 flex items-center gap-3">
-              <button
-                onClick={() => setOpenNote((v) => !v)}
-                className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
-              >
-                {openNote ? "Ocultar nota" : n ? "Editar nota" : "Añadir nota"}
-              </button>
-            </div>
-            {openNote && (
-              <textarea
-                value={n}
-                onChange={(e) => setItemNote(it.id, e.target.value)}
-                placeholder="Observaciones, evidencia, plan de acción…"
-                className="mt-2 w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows={3}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Agrupa ítems filtrados por sección
-  const grouped = useMemo(() => {
-    const bySection: Record<string, { section: Section; items: ChecklistItem[] }> = {};
-    for (const s of sections) bySection[s.id] = { section: s, items: [] };
-    for (const it of filtered) (bySection as any)[(it as any).sectionId].items.push(it);
-    return Object.values(bySection).filter((g) => g.items.length > 0);
-  }, [sections, filtered]);
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 text-gray-900">
-      {/* Topbar */}
-      <header className="sticky top-0 z-40 backdrop-blur bg-white/70 border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden h-10 w-10 rounded-xl border flex items-center justify-center bg-white"
-            aria-label="Abrir menú"
-          >
-            <span className="i">☰</span>
-          </button>
-          <div className="flex items-center gap-2">
-            {/* LOGO */}
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
-                LC
-              </div>
-              <div>
-                <div className="font-semibold leading-4">Cumplimiento de Laboratorio</div>
-                <div className="text-xs text-gray-600">Sistema de evaluación</div>
-              </div>
-            </div>
-          </div>
-          <div className="ml-auto hidden md:flex items-center gap-2">
-            <button onClick={() => window.print()} className="px-3 py-2 rounded-xl bg-blue-600 text-white text-sm shadow hover:bg-blue-700">Exportar PDF</button>
-            <button onClick={exportJSON} className="px-3 py-2 rounded-xl bg-white border text-sm hover:bg-gray-50">Exportar JSON</button>
-            <label className="px-3 py-2 rounded-xl bg-white border text-sm hover:bg-gray-50 cursor-pointer">
-              Importar JSON
-              <input type="file" accept="application/json" className="hidden" onChange={(e) => e.target.files && importJSON(e.target.files[0])} />
-            </label>
-            <button onClick={resetAll} className="px-3 py-2 rounded-xl bg-white border text-sm hover:bg-gray-50">Restablecer</button>
-          </div>
-        </div>
-      </header>
-
-      {/* Contenido */}
-      <div className="max-w-6xl mx-auto px-4 py-4 md:py-6 grid md:grid-cols-[260px_1fr] gap-4">
-        {/* Sidebar (desktop) */}
-        <aside className="hidden md:block sticky top-[64px] h-[calc(100vh-80px)] overflow-auto p-2 rounded-2xl border bg-white/70">
-          <Sidebar sections={sections} totals={totals} onAddItem={addCustomItem} />
-        </aside>
-
-        {/* Panel principal */}
-        <main>
-          {/* Controles rápidos */}
-          <div className="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div className="rounded-2xl border bg-white/70 p-3">
-              <div className="text-xs text-gray-500">Cumplimiento</div>
-              <div className="mt-2 flex items-center gap-3">
-                <div className="relative h-12 w-12">
-                  <div
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: `conic-gradient(#2563eb ${totals.pct * 3.6}deg, #e5e7eb 0deg)`,
-                    }}
-                  />
-                  <div className="absolute inset-1 rounded-full bg-white grid place-items-center text-sm font-semibold">
-                    {totals.pct}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold">{totals.done} / {totals.total} ítems</div>
-                  <div className="text-xs text-gray-500">En "Cumplimiento total"</div>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-2xl border bg-white/70 p-3">
-              <div className="text-xs text-gray-500">Búsqueda</div>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por ítem, sección o referencia…"
-                className="mt-2 w-full rounded-xl border p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="rounded-2xl border bg-white/70 p-3">
-              <div className="text-xs text-gray-500">Autoevaluación</div>
-              <div className="mt-2 flex items-center justify-between">
-                <div className="text-sm">Mostrar solo pendientes</div>
-                <button
-                  onClick={() => setShowOnlyPending((v) => !v)}
-                  className={`h-7 w-12 rounded-full relative transition ${
-                    showOnlyPending ? "bg-blue-600" : "bg-gray-300"
-                  }`}
-                  aria-pressed={showOnlyPending}
-                >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
-                      showOnlyPending ? "right-0.5" : "left-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Leyenda rápida */}
-          <div className="mb-2 text-[12px] text-gray-600">
-            <span className="inline-flex items-center gap-1 mr-4"><span className="h-3 w-3 rounded-full bg-blue-600 inline-block"></span> Cumplimiento total</span>
-            <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded-full bg-amber-400 inline-block"></span> En proceso</span>
-          </div>
-
-          {/* Listado agrupado */}
-          {grouped.map(({ section, items }) => (
-            <section id={section.id} key={section.id} className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-lg font-bold text-blue-800">{section.title}</h2>
-                <button
-                  onClick={() => addCustomItem(section.id)}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
-                >
-                  + Añadir ítem
-                </button>
-              </div>
-              <div>
-                {items.map((it) => (
-                  <ItemRow key={it.id} it={it} />
-                ))}
-              </div>
-            </section>
-          ))}
-
-          {/* Acciones inferiores (móvil) */}
-          <div className="md:hidden mt-6 grid grid-cols-2 gap-2">
-            <button onClick={() => window.print()} className="px-3 py-3 rounded-2xl bg-blue-600 text-white text-sm shadow">Exportar PDF</button>
-            <button onClick={exportJSON} className="px-3 py-3 rounded-2xl bg-white border text-sm">Exportar JSON</button>
-            <label className="col-span-2 px-3 py-3 rounded-2xl bg-white border text-sm text-center cursor-pointer">
-              Importar JSON
-              <input type="file" accept="application/json" className="hidden" onChange={(e) => e.target.files && importJSON(e.target.files[0])} />
-            </label>
-            <button onClick={resetAll} className="col-span-2 px-3 py-3 rounded-2xl bg-white border text-sm">Restablecer</button>
-          </div>
-        </main>
-      </div>
-
-      {/* Sidebar móvil */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" aria-modal="true" role="dialog">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-[85%] max-w-xs bg-white p-3 shadow-2xl">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Menú</div>
-              <button onClick={() => setSidebarOpen(false)} className="h-9 w-9 rounded-lg border">✕</button>
-            </div>
-            <Sidebar sections={sections} totals={totals} onAddItem={addCustomItem} onNavigate={() => setSidebarOpen(false)} />
-          </div>
-        </div>
-      )}
-
-      {/* Estilos de impresión */}
-      <style>{`
-        @media print {
-          header, aside, .md\\:hidden, [role="dialog"], .i { display: none !important; }
-          main { width: 100% !important; }
-          section { page-break-inside: avoid; }
-          input[type=date], button { filter: grayscale(1); }
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checklist de Cumplimiento Normativo - Laboratorios Clínicos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-      `}</style>
-    </div>
-  );
-}
 
-// ----- Sidebar component -----
-function Sidebar({
-  sections,
-  totals,
-  onAddItem,
-  onNavigate,
-}: {
-  sections: Section[];
-  totals: { total: number; done: number; pct: number };
-  onAddItem: (sectionId: string) => void;
-  onNavigate?: () => void;
-}) {
-  return (
-    <nav>
-      <div className="rounded-2xl p-4 bg-blue-600 text-white mb-3">
-        <div className="text-xs uppercase tracking-wide opacity-90">Progreso</div>
-        <div className="flex items-center gap-3 mt-2">
-          <div className="relative h-12 w-12">
-            <div
-              className="absolute inset-0 rounded-full"
-              style={{ background: `conic-gradient(white ${totals.pct * 3.6}deg, rgba(255,255,255,.35) 0deg)` }}
-            />
-            <div className="absolute inset-1 rounded-full bg-blue-600 grid place-items-center text-sm font-semibold">
-              {totals.pct}%
+        :root {
+            --primary: #2563eb;
+            --secondary: #1e40af;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1f2937;
+            --light: #f3f4f6;
+            --white: #ffffff;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--white);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: var(--white);
+            padding: 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.3; }
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stats {
+            background: var(--light);
+            padding: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .stat-card {
+            background: var(--white);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            color: var(--dark);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: var(--border);
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success) 0%, #059669 100%);
+            border-radius: 15px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            font-weight: bold;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            to { left: 100%; }
+        }
+
+        .controls {
+            padding: 20px 40px;
+            background: var(--white);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            border-bottom: 2px solid var(--border);
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--white);
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: var(--white);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: var(--white);
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: var(--white);
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .section:hover {
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        .section-header {
+            background: linear-gradient(90deg, var(--light) 0%, #e5e7eb 100%);
+            padding: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease;
+        }
+
+        .section-header:hover {
+            background: linear-gradient(90deg, #e5e7eb 0%, var(--light) 100%);
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            color: var(--dark);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-icon {
+            width: 30px;
+            height: 30px;
+            background: var(--primary);
+            color: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .section-progress {
+            font-size: 0.9rem;
+            color: var(--dark);
+            background: var(--white);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .section-content {
+            padding: 20px;
+            display: none;
+        }
+
+        .section.active .section-content {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .checkbox-group {
+            margin-bottom: 15px;
+            background: var(--light);
+            padding: 15px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-group:hover {
+            background: #e5e7eb;
+            transform: translateX(5px);
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            margin-top: 2px;
+            accent-color: var(--success);
+        }
+
+        .checkbox-label {
+            flex: 1;
+            color: var(--dark);
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .checkbox-label strong {
+            color: var(--primary);
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .sub-items {
+            margin-left: 32px;
+            margin-top: 10px;
+            padding-left: 20px;
+            border-left: 3px solid var(--border);
+        }
+
+        .sub-item {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .sub-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            margin-top: 2px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border-left: 4px solid var(--primary);
+        }
+
+        .alert-warning {
+            background: #fed7aa;
+            color: #92400e;
+            border-left: 4px solid var(--warning);
+        }
+
+        .footer {
+            background: var(--dark);
+            color: var(--white);
+            text-align: center;
+            padding: 30px;
+        }
+
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                padding: 15px;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--success);
+            color: var(--white);
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📋 Checklist de Cumplimiento Normativo</h1>
+            <p class="subtitle">Sistema de Gestión para Laboratorios Clínicos - NOM-007-SSA3-2011</p>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalItems">0</div>
+                <div class="stat-label">Total de Requisitos</div>
             </div>
-          </div>
-          <div className="text-sm"><span className="font-semibold">{totals.done}</span> / {totals.total} en cumplimiento total</div>
+            <div class="stat-card">
+                <div class="stat-number" id="completedItems">0</div>
+                <div class="stat-label">Completados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pendingItems">0</div>
+                <div class="stat-label">Pendientes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="progressPercent">0%</div>
+                <div class="stat-label">Progreso</div>
+            </div>
         </div>
-      </div>
-      <ul>
-        {sections.map((s) => (
-          <li key={s.id} className="mb-1">
-            <a
-              href={`#${s.id}`}
-              onClick={onNavigate}
-              className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-blue-50"
-            >
-              <span className="text-sm font-medium text-blue-900">{s.title}</span>
-              <button
-                onClick={(e) => { e.preventDefault(); onAddItem(s.id); }}
-                className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
-                aria-label={`Añadir ítem a ${s.title}`}
-              >
-                +
-              </button>
-            </a>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-3 text-[11px] text-gray-500">
-        <p>Consejo: registra la fecha de creación al iniciar un punto y usa "En proceso" hasta completarlo.</p>
-      </div>
-    </nav>
-  );
-}
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressBar">0%</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-primary" onclick="expandAll()">
+                <span>📂</span> Expandir Todo
+            </button>
+            <button class="btn-primary" onclick="collapseAll()">
+                <span>📁</span> Colapsar Todo
+            </button>
+            <button class="btn-success" onclick="saveProgress()">
+                <span>💾</span> Guardar Progreso
+            </button>
+            <button class="btn-warning" onclick="exportProgress()">
+                <span>📥</span> Exportar
+            </button>
+            <button class="btn-danger" onclick="resetProgress()">
+                <span>🔄</span> Reiniciar
+            </button>
+        </div>
+
+        <div class="content">
+            <div class="alert alert-info">
+                <span>ℹ️</span>
+                <div>
+                    <strong>Instrucciones:</strong> Marca cada requisito conforme lo vayas cumpliendo. 
+                    Tu progreso se guarda automáticamente en tu navegador.
+                </div>
+            </div>
+
+            <!-- SECCIÓN 1: DOCUMENTOS LEGALES -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-title">
+                        <span class="section-icon">📄</span>
+                        1. Documentos Legales y Administrativos
+                    </div>
+                    <span class="section-progress">0/5</span>
+                </div>
+                <div class="section-content">
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="doc1" onchange="updateProgress()">
+                            <label for="doc1" class="checkbox-label">
+                                <strong>Aviso de Funcionamiento</strong>
+                                Vigente y visible al público
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="doc2" onchange="updateProgress()">
+                            <label for="doc2" class="checkbox-label">
+                                <strong>Aviso de Responsable Sanitario</strong>
+                                Actualizado y con cédula profesional vigente
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="doc3" onchange="updateProgress()">
+                            <label for="doc3" class="checkbox-label">
+                                <strong>Licencia Sanitaria</strong>
+                                Si aplica según el tipo de laboratorio
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="doc4" onchange="updateProgress()">
+                            <label for="doc4" class="checkbox-label">
+                                <strong>Contratos de Servicios Subcontratados</strong>
+                                Con cláusula de responsabilidad mancomunada
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="doc5" onchange="updateProgress()">
+                            <label for="doc5" class="checkbox-label">
+                                <strong>Contrato de Recolección de RPBI</strong>
+                                Vigente con empresa autorizada por SEMARNAT
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 2: MANUALES -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-title">
+                        <span class="section-icon">📚</span>
+                        2. Manuales del Sistema de Gestión
+                    </div>
+                    <span class="section-progress">0/18</span>
+                </div>
+                <div class="section-content">
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="man1" onchange="updateProgress()">
+                            <label for="man1" class="checkbox-label">
+                                <strong>Manual de Organización</strong>
+                                Con organigrama y descripción de puestos
+                            </label>
+                        </div>
+                        <div class="sub-items">
+                            <div class="sub-item">
+                                <input type="checkbox" id="man1a" onchange="updateProgress()">
+                                <label for="man1a">Índice completo</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man1b" onchange="updateProgress()">
+                                <label for="man1b">Misión, visión y objeto social</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man1c" onchange="updateProgress()">
+                                <label for="man1c">Organigrama actualizado</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man1d" onchange="updateProgress()">
+                                <label for="man1d">Descripción de puestos y funciones</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="man2" onchange="updateProgress()">
+                            <label for="man2" class="checkbox-label">
+                                <strong>Manual de Procedimientos Administrativos</strong>
+                                Procesos no analíticos documentados
+                            </label>
+                        </div>
+                        <div class="sub-items">
+                            <div class="sub-item">
+                                <input type="checkbox" id="man2a" onchange="updateProgress()">
+                                <label for="man2a">Recepción y registro de pacientes</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man2b" onchange="updateProgress()">
+                                <label for="man2b">Toma y recepción de muestras</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man2c" onchange="updateProgress()">
+                                <label for="man2c">Entrega de resultados</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man2d" onchange="updateProgress()">
+                                <label for="man2d">Diagramas de flujo</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="man3" onchange="updateProgress()">
+                            <label for="man3" class="checkbox-label">
+                                <strong>Manual de Métodos Analíticos (PNOs)</strong>
+                                Un PNO por cada prueba realizada
+                            </label>
+                        </div>
+                        <div class="sub-items">
+                            <div class="sub-item">
+                                <input type="checkbox" id="man3a" onchange="updateProgress()">
+                                <label for="man3a">Fundamento de cada método</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man3b" onchange="updateProgress()">
+                                <label for="man3b">Procedimiento detallado paso a paso</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="man3c" onchange="updateProgress()">
+                                <label for="man3c">Valores de referencia por edad y género</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="man4" onchange="updateProgress()">
+                            <label for="man4" class="checkbox-label">
+                                <strong>Manual de Toma y Manejo de Muestras</strong>
+                                Fase pre-analítica documentada
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="man5" onchange="updateProgress()">
+                            <label for="man5" class="checkbox-label">
+                                <strong>Manual de Manejo de Equipos</strong>
+                                Uno por cada equipo del laboratorio
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="man6" onchange="updateProgress()">
+                            <label for="man6" class="checkbox-label">
+                                <strong>Manual de Seguridad e Higiene</strong>
+                                Identificación de riesgos y medidas preventivas
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 3: PROGRAMAS -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-title">
+                        <span class="section-icon">📅</span>
+                        3. Programas de Calidad y Mantenimiento
+                    </div>
+                    <span class="section-progress">0/8</span>
+                </div>
+                <div class="section-content">
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="prog1" onchange="updateProgress()">
+                            <label for="prog1" class="checkbox-label">
+                                <strong>Programa de Mantenimiento Preventivo</strong>
+                                Calendario anualizado por equipo
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="prog2" onchange="updateProgress()">
+                            <label for="prog2" class="checkbox-label">
+                                <strong>Programa de Control Interno de Calidad</strong>
+                                Monitoreo diario de precisión y exactitud
+                            </label>
+                        </div>
+                        <div class="sub-items">
+                            <div class="sub-item">
+                                <input type="checkbox" id="prog2a" onchange="updateProgress()">
+                                <label for="prog2a">Materiales de control definidos</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="prog2b" onchange="updateProgress()">
+                                <label for="prog2b">Reglas de Westgard implementadas</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="prog2c" onchange="updateProgress()">
+                                <label for="prog2c">Acciones correctivas documentadas</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="prog3" onchange="updateProgress()">
+                            <label for="prog3" class="checkbox-label">
+                                <strong>Programa de Evaluación Externa (PEEC/PACAL)</strong>
+                                Inscripción vigente y participación activa
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="prog4" onchange="updateProgress()">
+                            <label for="prog4" class="checkbox-label">
+                                <strong>Programa de Desinfección y Desinfestación</strong>
+                                Control de plagas y limpieza profunda
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="prog5" onchange="updateProgress()">
+                            <label for="prog5" class="checkbox-label">
+                                <strong>Programa de Capacitación</strong>
+                                Plan anual con temas de bioseguridad y calidad
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 4: BITÁCORAS Y REGISTROS -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-title">
+                        <span class="section-icon">📝</span>
+                        4. Bitácoras y Registros
+                    </div>
+                    <span class="section-progress">0/8</span>
+                </div>
+                <div class="section-content">
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit1" onchange="updateProgress()">
+                            <label for="bit1" class="checkbox-label">
+                                <strong>Bitácora de Mantenimiento y Calibración</strong>
+                                Foliada y actualizada por equipo
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit2" onchange="updateProgress()">
+                            <label for="bit2" class="checkbox-label">
+                                <strong>Bitácora de Control de Temperatura</strong>
+                                Registro matutino y vespertino
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit3" onchange="updateProgress()">
+                            <label for="bit3" class="checkbox-label">
+                                <strong>Registros de Control de Calidad Interno</strong>
+                                Gráficas de Levey-Jennings actualizadas
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit4" onchange="updateProgress()">
+                            <label for="bit4" class="checkbox-label">
+                                <strong>Bitácora de Pacientes</strong>
+                                Sistema de trazabilidad completa
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit5" onchange="updateProgress()">
+                            <label for="bit5" class="checkbox-label">
+                                <strong>Bitácora de No Conformidades</strong>
+                                Investigación y acciones correctivas
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit6" onchange="updateProgress()">
+                            <label for="bit6" class="checkbox-label">
+                                <strong>Bitácora de Quejas y Reclamaciones</strong>
+                                Procedimiento formal de gestión
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit7" onchange="updateProgress()">
+                            <label for="bit7" class="checkbox-label">
+                                <strong>Registro de Entrega de EPP</strong>
+                                Firmado por cada empleado
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="bit8" onchange="updateProgress()">
+                            <label for="bit8" class="checkbox-label">
+                                <strong>Manifiestos de RPBI</strong>
+                                Archivados por mínimo 5 años
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 5: INFRAESTRUCTURA -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-title">
+                        <span class="section-icon">🏢</span>
+                        5. Infraestructura y Áreas de Proceso
+                    </div>
+                    <span class="section-progress">0/10</span>
+                </div>
+                <div class="section-content">
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf1" onchange="updateProgress()">
+                            <label for="inf1" class="checkbox-label">
+                                <strong>Área de Registro y Sala de Espera</strong>
+                                Separada de áreas de proceso
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf2" onchange="updateProgress()">
+                            <label for="inf2" class="checkbox-label">
+                                <strong>Área de Toma de Muestras</strong>
+                                Con privacidad, comodidad y seguridad
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf3" onchange="updateProgress()">
+                            <label for="inf3" class="checkbox-label">
+                                <strong>Áreas Analíticas</strong>
+                                Separadas según actividades incompatibles
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf4" onchange="updateProgress()">
+                            <label for="inf4" class="checkbox-label">
+                                <strong>Área de Lavado y Esterilización</strong>
+                                Separada de áreas de análisis
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf5" onchange="updateProgress()">
+                            <label for="inf5" class="checkbox-label">
+                                <strong>Almacén de Reactivos</strong>
+                                Seco, ventilado y con temperatura controlada
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf6" onchange="updateProgress()">
+                            <label for="inf6" class="checkbox-label">
+                                <strong>Almacén Temporal de RPBI</strong>
+                                Techado, señalizado y separado
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf7" onchange="updateProgress()">
+                            <label for="inf7" class="checkbox-label">
+                                <strong>Campana de Bioseguridad (Microbiología)</strong>
+                                Clase II certificada anualmente
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf8" onchange="updateProgress()">
+                            <label for="inf8" class="checkbox-label">
+                                <strong>Señalización de Seguridad</strong>
+                                Riesgo biológico y uso de EPP
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf9" onchange="updateProgress()">
+                            <label for="inf9" class="checkbox-label">
+                                <strong>Equipo de Seguridad</strong>
+                                Extintores, lavaojos y regadera de emergencia
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="inf10" onchange="updateProgress()">
+                            <label for="inf10" class="checkbox-label">
+                                <strong>Contenedores de Punzocortantes</strong>
+                                Rígidos y en todas las áreas necesarias
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 6: RECURSOS HUMANOS -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-title">
+                        <span class="section-icon">👥</span>
+                        6. Recursos Humanos
+                    </div>
+                    <span class="section-progress">0/7</span>
+                </div>
+                <div class="section-content">
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="rh1" onchange="updateProgress()">
+                            <label for="rh1" class="checkbox-label">
+                                <strong>Expedientes del Personal</strong>
+                                Completos y actualizados
+                            </label>
+                        </div>
+                        <div class="sub-items">
+                            <div class="sub-item">
+                                <input type="checkbox" id="rh1a" onchange="updateProgress()">
+                                <label for="rh1a">Títulos y cédulas profesionales</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="rh1b" onchange="updateProgress()">
+                                <label for="rh1b">Diplomas técnicos certificados</label>
+                            </div>
+                            <div class="sub-item">
+                                <input type="checkbox" id="rh1c" onchange="updateProgress()">
+                                <label for="rh1c">Constancias de capacitación</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="rh2" onchange="updateProgress()">
+                            <label for="rh2" class="checkbox-label">
+                                <strong>Programa de Evaluación de Competencias</strong>
+                                Evaluaciones anuales documentadas
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="rh3" onchange="updateProgress()">
+                            <label for="rh3" class="checkbox-label">
+                                <strong>Inducción al Personal Nuevo</strong>
+                                Capacitación antes de iniciar labores
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 7: GESTIÓN DE CALIDAD -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-title">
+                        <span class="section-icon">✅</span>
+                        7. Sistema de Gestión de Calidad
+                    </div>
+                    <span class="section-progress">0/8</span>
+                </div>
+                <div class="section-content">
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc1" onchange="updateProgress()">
+                            <label for="sgc1" class="checkbox-label">
+                                <strong>Verificación de Métodos Analíticos</strong>
+                                Precisión, exactitud y rango reportable
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc2" onchange="updateProgress()">
+                            <label for="sgc2" class="checkbox-label">
+                                <strong>Trazabilidad Completa</strong>
+                                Del paciente al resultado final
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc3" onchange="updateProgress()">
+                            <label for="sgc3" class="checkbox-label">
+                                <strong>Informes de Resultados</strong>
+                                Con todos los elementos normativos
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc4" onchange="updateProgress()">
+                            <label for="sgc4" class="checkbox-label">
+                                <strong>Control de Documentos</strong>
+                                Versiones controladas y actualizadas
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc5" onchange="updateProgress()">
+                            <label for="sgc5" class="checkbox-label">
+                                <strong>Auditorías Internas</strong>
+                                Mínimo dos veces al año
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc6" onchange="updateProgress()">
+                            <label for="sgc6" class="checkbox-label">
+                                <strong>Revisión por la Dirección</strong>
+                                Anual del sistema completo
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc7" onchange="updateProgress()">
+                            <label for="sgc7" class="checkbox-label">
+                                <strong>Mejora Continua</strong>
+                                Ciclo PHVA implementado
+                            </label>
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="sgc8" onchange="updateProgress()">
+                            <label for="sgc8" class="checkbox-label">
+                                <strong>Carpeta de Verificación</strong>
+                                Documentos clave listos para inspección
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-warning">
+                <span>⚠️</span>
+                <div>
+                    <strong>Importante:</strong> Este checklist es una guía general. Consulta la normatividad específica
+                    vigente y asesórate con expertos en regulación sanitaria para tu caso particular.
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>📋 Checklist de Cumplimiento Normativo v1.0</p>
+            <p>Basado en NOM-007-SSA3-2011 y normatividad mexicana vigente</p>
+            <p>Creado con 💙 para la comunidad de laboratorios clínicos</p>
+        </footer>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // Inicializar al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            loadProgress();
+            updateProgress();
+        });
+
+        function toggleSection(header) {
+            const section = header.parentElement;
+            section.classList.toggle('active');
+        }
+
+        function expandAll() {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.add('active');
+            });
+            showToast('Todas las secciones expandidas', 'success');
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+            });
+            showToast('Todas las secciones colapsadas', 'info');
+        }
+
+        function updateProgress() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const total = checkboxes.length;
+            const checked = document.querySelectorAll('input[type="checkbox"]:checked').length;
+            const percentage = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+            // Actualizar estadísticas
+            document.getElementById('totalItems').textContent = total;
+            document.getElementById('completedItems').textContent = checked;
+            document.getElementById('pendingItems').textContent = total - checked;
+            document.getElementById('progressPercent').textContent = percentage + '%';
+
+            // Actualizar barra de progreso
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = percentage + '%';
+            progressBar.textContent = percentage + '%';
+
+            // Actualizar progreso por sección
+            document.querySelectorAll('.section').forEach(section => {
+                const sectionCheckboxes = section.querySelectorAll('input[type="checkbox"]');
+                const sectionChecked = section.querySelectorAll('input[type="checkbox"]:checked');
+                const sectionProgress = section.querySelector('.section-progress');
+                if (sectionProgress) {
+                    sectionProgress.textContent = `${sectionChecked.length}/${sectionCheckboxes.length}`;
+                }
+            });
+
+            // Guardar progreso automáticamente
+            saveProgressSilent();
+        }
+
+        function saveProgress() {
+            saveProgressSilent();
+            showToast('✅ Progreso guardado exitosamente', 'success');
+        }
+
+        function saveProgressSilent() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const progress = {};
+            checkboxes.forEach(checkbox => {
+                progress[checkbox.id] = checkbox.checked;
+            });
+            localStorage.setItem('labCompliance', JSON.stringify(progress));
+        }
+
+        function loadProgress() {
+            const saved = localStorage.getItem('labCompliance');
+            if (saved) {
+                const progress = JSON.parse(saved);
+                Object.keys(progress).forEach(id => {
+                    const checkbox = document.getElementById(id);
+                    if (checkbox) {
+                        checkbox.checked = progress[id];
+                    }
+                });
+            }
+        }
+
+        function resetProgress() {
+            if (confirm('¿Estás seguro de que deseas reiniciar todo el progreso?')) {
+                document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+                localStorage.removeItem('labCompliance');
+                updateProgress();
+                showToast('🔄 Progreso reiniciado', 'warning');
+            }
+        }
+
+        function exportProgress() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const data = {
+                date: new Date().toISOString(),
+                totalItems: checkboxes.length,
+                completedItems: document.querySelectorAll('input[type="checkbox"]:checked').length,
+                progress: {}
+            };
+            
+            checkboxes.forEach(checkbox => {
+                const label = checkbox.nextElementSibling?.textContent || checkbox.id;
+                data.progress[checkbox.id] = {
+                    checked: checkbox.checked,
+                    label: label.trim()
+                };
+            });
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `lab-compliance-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('📥 Progreso exportado', 'success');
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show';
+            
+            if (type === 'success') {
+                toast.style.background = 'var(--success)';
+            } else if (type === 'warning') {
+                toast.style.background = 'var(--warning)';
+            } else if (type === 'danger') {
+                toast.style.background = 'var(--danger)';
+            } else {
+                toast.style.background = 'var(--primary)';
+            }
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
